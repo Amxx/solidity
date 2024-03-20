@@ -36,6 +36,7 @@
 
 #include <boost/rational.hpp>
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <optional>
@@ -70,7 +71,7 @@ inline rational makeRational(bigint const& _numerator, bigint const& _denominato
 		return rational(_numerator, _denominator);
 }
 
-enum class DataLocation { Storage, CallData, Memory };
+enum class DataLocation { Storage, TransientStorage, CallData, Memory };
 
 
 /**
@@ -342,6 +343,15 @@ public:
 	/// @returns true if this is a non-value type and the data of this type is stored at the
 	/// given location.
 	virtual bool dataStoredIn(DataLocation) const { return false; }
+
+	bool dataStoredInAnyOf(std::initializer_list<DataLocation> _locations) const {
+		for (DataLocation _location : _locations) {
+			if (this->dataStoredIn(_location)) {
+				return true;
+			}
+		}
+		return false;
+	 }
 
 	/// Returns the list of all members of this type. Default implementation: no members apart from attached functions.
 	/// @param _currentScope scope in which the members are accessed.
@@ -1556,7 +1566,7 @@ public:
 	TypeResult binaryOperatorResult(Token, Type const*) const override { return nullptr; }
 	Type const* encodingType() const override;
 	TypeResult interfaceType(bool _inLibrary) const override;
-	bool dataStoredIn(DataLocation _location) const override { return _location == DataLocation::Storage; }
+	bool dataStoredIn(DataLocation _location) const override { return _location == DataLocation::Storage; } // [Amxx] TODO: can be transient
 	/// Cannot be stored in memory, but just in case.
 	bool hasSimpleZeroValueInMemory() const override { solAssert(false, ""); }
 	bool nameable() const override { return true; }

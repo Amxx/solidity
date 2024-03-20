@@ -790,7 +790,7 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 					if (!ref->second.suffix.empty())
 					{
 						std::string const& suffix = ref->second.suffix;
-						if (variable->type()->dataStoredIn(DataLocation::Storage))
+						if (variable->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
 						{
 							solAssert(suffix == "offset" || suffix == "slot", "");
 							unsigned size = variable->type()->sizeOnStack();
@@ -865,7 +865,7 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 			auto variable = dynamic_cast<VariableDeclaration const*>(decl);
 			unsigned stackDiff = static_cast<unsigned>(_assembly.stackHeight()) - m_context.baseStackOffsetOfVariable(*variable) - 1;
 			std::string const& suffix = ref->second.suffix;
-			if (variable->type()->dataStoredIn(DataLocation::Storage))
+			if (variable->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
 			{
 				solAssert(
 					!!variable && m_context.isLocalVariable(variable),

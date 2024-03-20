@@ -1053,13 +1053,14 @@ private:
 class VariableDeclaration: public Declaration, public StructurallyDocumented
 {
 public:
-	enum Location { Unspecified, Storage, Memory, CallData };
-	enum class Mutability { Mutable, Immutable, Constant };
+	enum Location { Unspecified, Storage, TransientStorage, Memory, CallData };
+	enum class Mutability { Mutable, Transient, Immutable, Constant };
 	static std::string mutabilityToString(Mutability _mutability)
 	{
 		switch (_mutability)
 		{
 		case Mutability::Mutable: return "mutable";
+		case Mutability::Transient: return "transient";
 		case Mutability::Immutable: return "immutable";
 		case Mutability::Constant: return "constant";
 		}
@@ -1140,6 +1141,7 @@ public:
 	Mutability mutability() const { return m_mutability; }
 	bool isConstant() const { return m_mutability == Mutability::Constant; }
 	bool immutable() const { return m_mutability == Mutability::Immutable; }
+	bool transient() const { return m_mutability == Mutability::Transient; }
 	ASTPointer<OverrideSpecifier> const& overrides() const { return m_overrides; }
 	Location referenceLocation() const { return m_location; }
 	/// @returns a set of allowed storage locations for the variable.

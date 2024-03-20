@@ -27,6 +27,7 @@
 #include <libsolidity/ast/Types.h>
 #include <libsolidity/codegen/CompilerUtils.h>
 #include <libevmasm/Instruction.h>
+#include <libsolidity/codegen/InstructionsUtils.h>
 
 #include <libsolutil/StackTooDeepString.h>
 
@@ -36,9 +37,8 @@ using namespace solidity::frontend;
 using namespace solidity::langutil;
 using namespace solidity::util;
 
-
 StackVariable::StackVariable(CompilerContext& _compilerContext, VariableDeclaration const& _declaration):
-	LValue(_compilerContext, _declaration.annotation().type),
+	LValue(_compilerContext, _declaration.type()),
 	m_baseStackOffset(m_context.baseStackOffsetOfVariable(_declaration)),
 	m_size(m_dataType->sizeOnStack())
 {
@@ -149,7 +149,7 @@ void MemoryItem::setToZero(SourceLocation const&, bool _removeReference) const
 
 
 ImmutableItem::ImmutableItem(CompilerContext& _compilerContext, VariableDeclaration const& _variable):
-	LValue(_compilerContext, _variable.annotation().type), m_variable(_variable)
+	LValue(_compilerContext, _variable.type()), m_variable(_variable)
 {
 	solAssert(_variable.immutable(), "");
 }
@@ -199,16 +199,59 @@ void ImmutableItem::setToZero(SourceLocation const&, bool _removeReference) cons
 }
 
 StorageItem::StorageItem(CompilerContext& _compilerContext, VariableDeclaration const& _declaration):
-	StorageItem(_compilerContext, *_declaration.annotation().type)
+	StorageItem(_compilerContext, *_declaration.type(), _declaration.transient())
 {
+	// std::cout << "[[[ StorageItem::StorageItem #1 ]]]" << std::endl;
+	// switch (_declaration.referenceLocation())
+	// {
+	// 	case VariableDeclaration::Location::Unspecified: std::cout << "VariableDeclaration::Location::Unspecified" << std::endl; break;
+	// 	case VariableDeclaration::Location::Storage: std::cout << "VariableDeclaration::Location::Storage" << std::endl; break;
+	// 	case VariableDeclaration::Location::TransientStorage: std::cout << "VariableDeclaration::Location::TransientStorage" << std::endl; break;
+	// 	case VariableDeclaration::Location::Memory: std::cout << "VariableDeclaration::Location::Memory" << std::endl; break;
+	// 	case VariableDeclaration::Location::CallData: std::cout << "VariableDeclaration::Location::CallData" << std::endl; break;
+	// }
+	// switch (_declaration.mutability())
+	// {
+	// 	case VariableDeclaration::Mutability::Mutable: std::cout << "VariableDeclaration::Mutability::Mutable" << std::endl; break;
+	// 	case VariableDeclaration::Mutability::Transient: std::cout << "VariableDeclaration::Mutability::Transient" << std::endl; break;
+	// 	case VariableDeclaration::Mutability::Immutable: std::cout << "VariableDeclaration::Mutability::Immutable" << std::endl; break;
+	// 	case VariableDeclaration::Mutability::Constant: std::cout << "VariableDeclaration::Mutability::Constant" << std::endl; break;
+	// }
 	solAssert(!_declaration.immutable(), "");
 	auto const& location = m_context.storageLocationOfVariable(_declaration);
 	m_context << location.first << u256(location.second);
 }
 
-StorageItem::StorageItem(CompilerContext& _compilerContext, Type const& _type):
-	LValue(_compilerContext, &_type)
+StorageItem::StorageItem(CompilerContext& _compilerContext, Type const& _type, bool _transient):
+	LValue(_compilerContext, &_type),
+	m_transient(_transient)
 {
+	// std::cout << "[[[ StorageItem::StorageItem #2 ]]]" << std::endl;
+	// switch(_type.category())
+	// {
+	// 	case Type::Category::Address: std::cout << "Type::Category::Address" << std::endl; break;
+	// 	case Type::Category::Integer: std::cout << "Type::Category::Integer" << std::endl; break;
+	// 	case Type::Category::RationalNumber: std::cout << "Type::Category::RationalNumber" << std::endl; break;
+	// 	case Type::Category::StringLiteral: std::cout << "Type::Category::StringLiteral" << std::endl; break;
+	// 	case Type::Category::Bool: std::cout << "Type::Category::Bool" << std::endl; break;
+	// 	case Type::Category::FixedPoint: std::cout << "Type::Category::FixedPoint" << std::endl; break;
+	// 	case Type::Category::Array: std::cout << "Type::Category::Array" << std::endl; break;
+	// 	case Type::Category::ArraySlice: std::cout << "Type::Category::ArraySlice" << std::endl; break;
+	// 	case Type::Category::FixedBytes: std::cout << "Type::Category::FixedBytes" << std::endl; break;
+	// 	case Type::Category::Contract: std::cout << "Type::Category::Contract" << std::endl; break;
+	// 	case Type::Category::Struct: std::cout << "Type::Category::Struct" << std::endl; break;
+	// 	case Type::Category::Function: std::cout << "Type::Category::Function" << std::endl; break;
+	// 	case Type::Category::Enum: std::cout << "Type::Category::Enum" << std::endl; break;
+	// 	case Type::Category::UserDefinedValueType: std::cout << "Type::Category::UserDefinedValueType" << std::endl; break;
+	// 	case Type::Category::Tuple: std::cout << "Type::Category::Tuple" << std::endl; break;
+	// 	case Type::Category::Mapping: std::cout << "Type::Category::Mapping" << std::endl; break;
+	// 	case Type::Category::TypeType: std::cout << "Type::Category::TypeType" << std::endl; break;
+	// 	case Type::Category::Modifier: std::cout << "Type::Category::Modifier" << std::endl; break;
+	// 	case Type::Category::Magic: std::cout << "Type::Category::Magic" << std::endl; break;
+	// 	case Type::Category::Module: std::cout << "Type::Category::Module" << std::endl; break;
+	// 	case Type::Category::InaccessibleDynamic: std::cout << "Type::Category::InaccessibleDynamic" << std::endl; break;
+	// }
+	// std::cout << "Transient: " << _transient << std::endl;
 	if (m_dataType->isValueType())
 	{
 		if (m_dataType->category() != Type::Category::Function)
@@ -232,7 +275,7 @@ void StorageItem::retrieveValue(SourceLocation const&, bool _remove) const
 	if (!_remove)
 		CompilerUtils(m_context).copyToStackTop(sizeOnStack(), sizeOnStack());
 	if (m_dataType->storageBytes() == 32)
-		m_context << Instruction::POP << Instruction::SLOAD;
+		m_context << Instruction::POP << LoadInstr(m_transient);
 	else
 	{
 		Type const* type = m_dataType;
@@ -240,7 +283,7 @@ void StorageItem::retrieveValue(SourceLocation const&, bool _remove) const
 			type = type->encodingType();
 		bool cleaned = false;
 		m_context
-			<< Instruction::SWAP1 << Instruction::SLOAD << Instruction::SWAP1
+			<< Instruction::SWAP1 << LoadInstr(m_transient) << Instruction::SWAP1
 			<< u256(0x100) << Instruction::EXP << Instruction::SWAP1 << Instruction::DIV;
 		if (type->category() == Type::Category::FixedPoint)
 			// implementation should be very similar to the integer case.
@@ -285,6 +328,7 @@ void StorageItem::storeValue(Type const& _sourceType, SourceLocation const& _loc
 {
 	CompilerUtils utils(m_context);
 	solAssert(m_dataType, "");
+	// std::cout << "StorageItem::storeValue: m_dataType->richIdentifier() " << m_dataType->richIdentifier() << std::endl;
 
 	// stack: value storage_key storage_offset
 	if (m_dataType->isValueType())
@@ -303,7 +347,7 @@ void StorageItem::storeValue(Type const& _sourceType, SourceLocation const& _loc
 			utils.convertType(_sourceType, *m_dataType, true);
 			m_context << Instruction::SWAP1;
 
-			m_context << Instruction::SSTORE;
+			m_context << StoreInstr(m_transient);
 		}
 		else
 		{
@@ -311,7 +355,7 @@ void StorageItem::storeValue(Type const& _sourceType, SourceLocation const& _loc
 			m_context << u256(0x100) << Instruction::EXP;
 			// stack: value storage_ref multiplier
 			// fetch old value
-			m_context << Instruction::DUP2 << Instruction::SLOAD;
+			m_context << Instruction::DUP2 << LoadInstr(m_transient);
 			// stack: value storage_ref multiplier old_full_value
 			// clear bytes in old value
 			m_context
@@ -358,7 +402,7 @@ void StorageItem::storeValue(Type const& _sourceType, SourceLocation const& _loc
 			}
 			m_context  << Instruction::MUL << Instruction::OR;
 			// stack: value storage_ref updated_value
-			m_context << Instruction::SWAP1 << Instruction::SSTORE;
+			m_context << Instruction::SWAP1 << StoreInstr(m_transient);
 			if (_move)
 				utils.popStackElement(*m_dataType);
 		}
@@ -406,14 +450,14 @@ void StorageItem::storeValue(Type const& _sourceType, SourceLocation const& _loc
 					Type const* memberType = member.type;
 					solAssert(memberType->nameable(), "");
 					Type const* sourceMemberType = sourceType.memberType(member.name);
-					if (sourceType.location() == DataLocation::Storage)
+					if (sourceType.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
 					{
 						// stack layout: source_ref target_ref
 						std::pair<u256, unsigned> const& offsets = sourceType.storageOffsetsOfMember(member.name);
 						m_context << offsets.first << Instruction::DUP3 << Instruction::ADD;
 						m_context << u256(offsets.second);
 						// stack: source_ref target_ref source_member_ref source_member_off
-						StorageItem(m_context, *sourceMemberType).retrieveValue(_location, true);
+						StorageItem(m_context, *sourceMemberType, sourceType.dataStoredIn({ DataLocation::TransientStorage })).retrieveValue(_location, true);
 						// stack: source_ref target_ref source_value...
 					}
 					else
@@ -430,7 +474,7 @@ void StorageItem::storeValue(Type const& _sourceType, SourceLocation const& _loc
 					m_context << dupInstruction(1 + stackSize) << offsets.first << Instruction::ADD;
 					m_context << u256(offsets.second);
 					// stack: source_ref target_ref target_off source_value... target_member_ref target_member_byte_off
-					StorageItem(m_context, *memberType).storeValue(*sourceMemberType, _location, true);
+					StorageItem(m_context, *memberType, m_transient).storeValue(*sourceMemberType, _location, true);
 				}
 			}
 			// stack layout: source_ref target_ref
@@ -472,7 +516,7 @@ void StorageItem::setToZero(SourceLocation const&, bool _removeReference) const
 			m_context
 				<< offsets.first << Instruction::DUP3 << Instruction::ADD
 				<< u256(offsets.second);
-			StorageItem(m_context, *memberType).setToZero();
+			StorageItem(m_context, *memberType, m_transient).setToZero();
 		}
 		if (_removeReference)
 			m_context << Instruction::POP << Instruction::POP;
@@ -487,14 +531,14 @@ void StorageItem::setToZero(SourceLocation const&, bool _removeReference) const
 			// offset should be zero
 			m_context
 				<< Instruction::POP << u256(0)
-				<< Instruction::SWAP1 << Instruction::SSTORE;
+				<< Instruction::SWAP1 << StoreInstr(m_transient);
 		}
 		else
 		{
 			m_context << u256(0x100) << Instruction::EXP;
 			// stack: storage_ref multiplier
 			// fetch old value
-			m_context << Instruction::DUP2 << Instruction::SLOAD;
+			m_context << Instruction::DUP2 << LoadInstr(m_transient);
 			// stack: storage_ref multiplier old_full_value
 			// clear bytes in old value
 			m_context
@@ -502,13 +546,14 @@ void StorageItem::setToZero(SourceLocation const&, bool _removeReference) const
 				<< Instruction::MUL;
 			m_context << Instruction::NOT << Instruction::AND;
 			// stack: storage_ref cleared_value
-			m_context << Instruction::SWAP1 << Instruction::SSTORE;
+			m_context << Instruction::SWAP1 << StoreInstr(m_transient);
 		}
 	}
 }
 
 StorageByteArrayElement::StorageByteArrayElement(CompilerContext& _compilerContext):
-	LValue(_compilerContext, TypeProvider::byte())
+	LValue(_compilerContext, TypeProvider::byte()),
+	m_transient(false) // [Amxx] TODO: set in construction
 {
 }
 
@@ -516,10 +561,10 @@ void StorageByteArrayElement::retrieveValue(SourceLocation const&, bool _remove)
 {
 	// stack: ref byte_number
 	if (_remove)
-		m_context << Instruction::SWAP1 << Instruction::SLOAD
+		m_context << Instruction::SWAP1 << LoadInstr(m_transient)
 			<< Instruction::SWAP1 << Instruction::BYTE;
 	else
-		m_context << Instruction::DUP2 << Instruction::SLOAD
+		m_context << Instruction::DUP2 << LoadInstr(m_transient)
 			<< Instruction::DUP2 << Instruction::BYTE;
 	m_context << (u256(1) << (256 - 8)) << Instruction::MUL;
 }
@@ -529,7 +574,7 @@ void StorageByteArrayElement::storeValue(Type const&, SourceLocation const&, boo
 	// stack: value ref byte_number
 	m_context << u256(31) << Instruction::SUB << u256(0x100) << Instruction::EXP;
 	// stack: value ref (1<<(8*(31-byte_number)))
-	m_context << Instruction::DUP2 << Instruction::SLOAD;
+	m_context << Instruction::DUP2 << LoadInstr(m_transient);
 	// stack: value ref (1<<(8*(31-byte_number))) old_full_value
 	// clear byte in old value
 	m_context << Instruction::DUP2 << u256(0xff) << Instruction::MUL
@@ -539,7 +584,7 @@ void StorageByteArrayElement::storeValue(Type const&, SourceLocation const&, boo
 	m_context << (u256(1) << (256 - 8)) << Instruction::DUP5 << Instruction::DIV
 		<< Instruction::MUL << Instruction::OR;
 	// stack: value ref new_full_value
-	m_context << Instruction::SWAP1 << Instruction::SSTORE;
+	m_context << Instruction::SWAP1 << StoreInstr(m_transient);
 	if (_move)
 		m_context << Instruction::POP;
 }
@@ -550,13 +595,13 @@ void StorageByteArrayElement::setToZero(SourceLocation const&, bool _removeRefer
 	solAssert(_removeReference, "");
 	m_context << u256(31) << Instruction::SUB << u256(0x100) << Instruction::EXP;
 	// stack: ref (1<<(8*(31-byte_number)))
-	m_context << Instruction::DUP2 << Instruction::SLOAD;
+	m_context << Instruction::DUP2 << LoadInstr(m_transient);
 	// stack: ref (1<<(8*(31-byte_number))) old_full_value
 	// clear byte in old value
 	m_context << Instruction::SWAP1 << u256(0xff) << Instruction::MUL;
 	m_context << Instruction::NOT << Instruction::AND;
 	// stack: ref old_full_value_with_cleared_byte
-	m_context << Instruction::SWAP1 << Instruction::SSTORE;
+	m_context << Instruction::SWAP1 << StoreInstr(m_transient);
 }
 
 TupleObject::TupleObject(

@@ -168,7 +168,7 @@ private:
 			else
 				solAssert(false);
 		}
-		else if (varDecl->type()->dataStoredIn(DataLocation::Storage))
+		else if (varDecl->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
 		{
 			solAssert(suffix == "slot" || suffix == "offset");
 			solAssert(varDecl->isLocalVariable());
@@ -302,7 +302,7 @@ void IRGeneratorForStatements::initializeLocalVar(VariableDeclaration const& _va
 		if (dynamic_cast<MappingType const*>(type))
 			return;
 		else if (auto const* refType = dynamic_cast<ReferenceType const*>(type))
-			if (refType->dataStoredIn(DataLocation::Storage) && refType->isPointer())
+			if (refType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }) && refType->isPointer())
 				return;
 
 		IRVariable zero = zeroValue(*type);
@@ -1984,29 +1984,6 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 		IRVariable expression(_memberAccess.expression());
 		switch (structType.location())
 		{
-		case DataLocation::Storage:
-		{
-			std::pair<u256, unsigned> const& offsets = structType.storageOffsetsOfMember(member);
-			std::string slot = m_context.newYulVariable();
-			appendCode() << "let " << slot << " := " <<
-				("add(" + expression.part("slot").name() + ", " + offsets.first.str() + ")\n");
-			setLValue(_memberAccess, IRLValue{
-				type(_memberAccess),
-				IRLValue::Storage{slot, offsets.second}
-			});
-			break;
-		}
-		case DataLocation::Memory:
-		{
-			std::string pos = m_context.newYulVariable();
-			appendCode() << "let " << pos << " := " <<
-				("add(" + expression.part("mpos").name() + ", " + structType.memoryOffsetOfMember(member).str() + ")\n");
-			setLValue(_memberAccess, IRLValue{
-				type(_memberAccess),
-				IRLValue::Memory{pos}
-			});
-			break;
-		}
 		case DataLocation::CallData:
 		{
 			std::string baseRef = expression.part("offset").name();
@@ -2031,6 +2008,30 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 					"(" <<
 					offset <<
 					")\n";
+			break;
+		}
+		case DataLocation::Memory:
+		{
+			std::string pos = m_context.newYulVariable();
+			appendCode() << "let " << pos << " := " <<
+				("add(" + expression.part("mpos").name() + ", " + structType.memoryOffsetOfMember(member).str() + ")\n");
+			setLValue(_memberAccess, IRLValue{
+				type(_memberAccess),
+				IRLValue::Memory{pos}
+			});
+			break;
+		}
+		case DataLocation::Storage:
+		case DataLocation::TransientStorage:
+		{
+			std::pair<u256, unsigned> const& offsets = structType.storageOffsetsOfMember(member);
+			std::string slot = m_context.newYulVariable();
+			appendCode() << "let " << slot << " := " <<
+				("add(" + expression.part("slot").name() + ", " + offsets.first.str() + ")\n");
+			setLValue(_memberAccess, IRLValue{
+				type(_memberAccess),
+				IRLValue::Storage{slot, offsets.second}
+			});
 			break;
 		}
 		default:
@@ -2069,7 +2070,7 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 		}
 		else if (member == "pop" || member == "push")
 		{
-			solAssert(type.location() == DataLocation::Storage);
+			solAssert(type.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }));
 			define(IRVariable{_memberAccess}.part("slot"), IRVariable{_memberAccess.expression()}.part("slot"));
 		}
 		else
@@ -2276,44 +2277,6 @@ void IRGeneratorForStatements::endVisit(IndexAccess const& _indexAccess)
 
 		switch (arrayType.location())
 		{
-			case DataLocation::Storage:
-			{
-				std::string slot = m_context.newYulVariable();
-				std::string offset = m_context.newYulVariable();
-
-				appendCode() << Whiskers(R"(
-					let <slot>, <offset> := <indexFunc>(<array>, <index>)
-				)")
-				("slot", slot)
-				("offset", offset)
-				("indexFunc", m_utils.storageArrayIndexAccessFunction(arrayType))
-				("array", IRVariable(_indexAccess.baseExpression()).part("slot").name())
-				("index", IRVariable(*_indexAccess.indexExpression()).name())
-				.render();
-
-				setLValue(_indexAccess, IRLValue{
-					*_indexAccess.annotation().type,
-					IRLValue::Storage{slot, offset}
-				});
-
-				break;
-			}
-			case DataLocation::Memory:
-			{
-				std::string const indexAccessFunction = m_utils.memoryArrayIndexAccessFunction(arrayType);
-				std::string const baseRef = IRVariable(_indexAccess.baseExpression()).part("mpos").name();
-				std::string const indexExpression = expressionAsType(
-					*_indexAccess.indexExpression(),
-					*TypeProvider::uint256()
-				);
-				std::string const memAddress = indexAccessFunction + "(" + baseRef + ", " + indexExpression + ")";
-
-				setLValue(_indexAccess, IRLValue{
-					*arrayType.baseType(),
-					IRLValue::Memory{memAddress, arrayType.isByteArrayOrString()}
-				});
-				break;
-			}
 			case DataLocation::CallData:
 			{
 				std::string const indexAccessFunction = m_utils.calldataArrayIndexAccessFunction(arrayType);
@@ -2338,6 +2301,45 @@ void IRGeneratorForStatements::endVisit(IndexAccess const& _indexAccess)
 						")\n";
 				else
 					define(_indexAccess) << calldataAddress << "\n";
+				break;
+			}
+			case DataLocation::Memory:
+			{
+				std::string const indexAccessFunction = m_utils.memoryArrayIndexAccessFunction(arrayType);
+				std::string const baseRef = IRVariable(_indexAccess.baseExpression()).part("mpos").name();
+				std::string const indexExpression = expressionAsType(
+					*_indexAccess.indexExpression(),
+					*TypeProvider::uint256()
+				);
+				std::string const memAddress = indexAccessFunction + "(" + baseRef + ", " + indexExpression + ")";
+
+				setLValue(_indexAccess, IRLValue{
+					*arrayType.baseType(),
+					IRLValue::Memory{memAddress, arrayType.isByteArrayOrString()}
+				});
+				break;
+			}
+			case DataLocation::Storage:
+			case DataLocation::TransientStorage:
+			{
+				std::string slot = m_context.newYulVariable();
+				std::string offset = m_context.newYulVariable();
+
+				appendCode() << Whiskers(R"(
+					let <slot>, <offset> := <indexFunc>(<array>, <index>)
+				)")
+				("slot", slot)
+				("offset", offset)
+				("indexFunc", m_utils.storageArrayIndexAccessFunction(arrayType))
+				("array", IRVariable(_indexAccess.baseExpression()).part("slot").name())
+				("index", IRVariable(*_indexAccess.indexExpression()).name())
+				.render();
+
+				setLValue(_indexAccess, IRLValue{
+					*_indexAccess.annotation().type,
+					IRLValue::Storage{slot, offset}
+				});
+
 				break;
 			}
 		}

@@ -126,10 +126,10 @@ void TypeChecker::checkDoubleStorageAssignment(Assignment const& _assignment)
 		{
 			if (ReferenceType const* ref = dynamic_cast<ReferenceType const*>(componentType))
 			{
-				if (ref && ref->dataStoredIn(DataLocation::Storage) && !ref->isPointer())
+				if (ref && ref->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }) && !ref->isPointer())
 				{
 					toStorageCopies++;
-					if (_rhs.components()[index]->dataStoredIn(DataLocation::Storage))
+					if (_rhs.components()[index]->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
 						storageToStorageCopies++;
 				}
 			}
@@ -143,7 +143,7 @@ void TypeChecker::checkDoubleStorageAssignment(Assignment const& _assignment)
 						if (callType.kind() == FunctionType::Kind::ArrayPush)
 						{
 							ArrayType const& arrayType = dynamic_cast<ArrayType const&>(*callType.selfType());
-							if (arrayType.isByteArray() && arrayType.dataStoredIn(DataLocation::Storage))
+							if (arrayType.isByteArray() && arrayType.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
 							{
 								++storageByteAccesses;
 								++storageByteArrayPushes;
@@ -153,7 +153,7 @@ void TypeChecker::checkDoubleStorageAssignment(Assignment const& _assignment)
 					else if (IndexAccess const* indexAccess = dynamic_cast<IndexAccess const*>(resolveOuterUnaryTuples(lhsResolved->components().at(index).get())))
 					{
 						if (ArrayType const* arrayType = dynamic_cast<ArrayType const*>(type(indexAccess->baseExpression())))
-							if (arrayType->isByteArray() && arrayType->dataStoredIn(DataLocation::Storage))
+							if (arrayType->isByteArray() && arrayType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
 								++storageByteAccesses;
 					}
 				}
@@ -260,8 +260,7 @@ TypePointers TypeChecker::typeCheckABIDecodeAndRetrieveReturnType(FunctionCall c
 			if (actualType->category() == Type::Category::Address)
 				actualType = TypeProvider::payableAddress();
 			solAssert(
-				!actualType->dataStoredIn(DataLocation::CallData) &&
-				!actualType->dataStoredIn(DataLocation::Storage),
+				!actualType->dataStoredInAnyOf({ DataLocation::CallData, DataLocation::Storage, DataLocation::TransientStorage }),
 				""
 			);
 			if (!actualType->fullEncodingType(false, _abiEncoderV2, false))
@@ -674,7 +673,7 @@ bool TypeChecker::visit(VariableDeclaration const& _variable)
 		BoolResult result = referenceType->validForLocation(referenceType->location());
 		if (result)
 		{
-			bool isLibraryStorageParameter = (_variable.isLibraryFunctionParameter() && referenceType->location() == DataLocation::Storage);
+			bool isLibraryStorageParameter = (_variable.isLibraryFunctionParameter() && referenceType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }));
 			// We skip the calldata check for abstract contract constructors.
 			bool isAbstractConstructorParam = _variable.isConstructorParameter() && m_currentContract && m_currentContract->abstract();
 			bool callDataCheckRequired =
@@ -921,7 +920,7 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 			{
 				std::string const& suffix = identifierInfo.suffix;
 				solAssert((std::set<std::string>{"offset", "slot", "length", "selector", "address"}).count(suffix), "");
-				if (!var->isConstant() && (var->isStateVariable() || var->type()->dataStoredIn(DataLocation::Storage)))
+				if (!var->isConstant() && (var->isStateVariable() || var->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage })))
 				{
 					if (suffix != "slot" && suffix != "offset")
 					{
@@ -981,7 +980,7 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 				);
 				return false;
 			}
-			else if (var->type()->dataStoredIn(DataLocation::Storage))
+			else if (var->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
 			{
 				m_errorReporter.typeError(9068_error, nativeLocationOf(_identifier), "You have to use the \".slot\" or \".offset\" suffix to access storage reference variables.");
 				return false;
@@ -1987,13 +1986,13 @@ Type const* TypeChecker::typeCheckTypeConversionAndRetrieveReturnType(
 			{
 				if (auto resultArrayType = dynamic_cast<ArrayType const*>(resultType))
 					solAssert(
-						argArrayType->location() != DataLocation::Storage ||
+						!argArrayType->dataStoredInAnyOf({ DataLocation::CallData, DataLocation::Storage, DataLocation::TransientStorage }) ||
 						(
 							(
 								resultArrayType->isPointer() ||
 								(argArrayType->isByteArrayOrString() && resultArrayType->isByteArrayOrString())
 							) &&
-							resultArrayType->location() == DataLocation::Storage
+							resultArrayType->location() == argArrayType->location()
 						),
 						"Invalid explicit conversion to storage type."
 					);

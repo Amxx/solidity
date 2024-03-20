@@ -121,10 +121,6 @@ private:
 	/// Sets the current LValue to a new one (of the appropriate type) from the given declaration.
 	/// Also retrieves the value if it was not requested by @a _expression.
 	void setLValueFromDeclaration(Declaration const& _declaration, Expression const& _expression);
-	/// Sets the current LValue to a StorageItem holding the type of @a _expression. The reference is assumed
-	/// to be on the stack.
-	/// Also retrieves the value if it was not requested by @a _expression.
-	void setLValueToStorageItem(Expression const& _expression);
 	/// Sets the current LValue to a new LValue constructed from the arguments.
 	/// Also retrieves the value if it was not requested by @a _expression.
 	template <class LValueType, class... Arguments>

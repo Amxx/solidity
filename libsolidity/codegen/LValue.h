@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <libevmasm/Instruction.h>
 #include <libsolidity/codegen/ArrayUtils.h>
 #include <libsolutil/Common.h>
 #include <liblangutil/SourceLocation.h>
@@ -159,7 +160,7 @@ public:
 	/// Constructs the LValue and pushes the location of @a _declaration onto the stack.
 	StorageItem(CompilerContext& _compilerContext, VariableDeclaration const& _declaration);
 	/// Constructs the LValue and assumes that the storage reference is already on the stack.
-	StorageItem(CompilerContext& _compilerContext, Type const& _type);
+	StorageItem(CompilerContext& _compilerContext, Type const& _type, bool _transient);
 	unsigned sizeOnStack() const override { return 2; }
 	void retrieveValue(langutil::SourceLocation const& _location, bool _remove = false) const override;
 	void storeValue(
@@ -171,6 +172,8 @@ public:
 		langutil::SourceLocation const& _location = {},
 		bool _removeReference = true
 	) const override;
+private:
+	bool m_transient;
 };
 
 /**
@@ -193,6 +196,8 @@ public:
 		langutil::SourceLocation const& _location = {},
 		bool _removeReference = true
 	) const override;
+private:
+	bool m_transient;
 };
 
 /**

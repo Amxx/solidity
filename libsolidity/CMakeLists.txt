@@ -82,6 +82,8 @@ set(sources
 	codegen/ContractCompiler.h
 	codegen/ExpressionCompiler.cpp
 	codegen/ExpressionCompiler.h
+	codegen/InstructionsUtils.cpp
+	codegen/InstructionsUtils.h
 	codegen/LValue.cpp
 	codegen/LValue.h
 	codegen/MultiUseYulFunctionCollector.h

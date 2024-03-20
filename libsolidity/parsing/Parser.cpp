@@ -851,13 +851,38 @@ ASTPointer<VariableDeclaration> Parser::parseVariableDeclaration(
 
 				isIndexed = true;
 			}
+			else if (token == Token::Transient)
+			{
+				// This is both a storage location, and a mutability marker
+				if (location != VariableDeclaration::Location::Unspecified)
+					parserError(3548_error, "Location already specified.");
+				else if (mutability != VariableDeclaration::Mutability::Mutable)
+					parserError(
+						3109_error,
+						std::string("Mutability already set to ") +
+						(
+							mutability == VariableDeclaration::Mutability::Constant ? "\"constant\"" :
+							mutability == VariableDeclaration::Mutability::Immutable ? "\"immutable\"" :
+							"\"transient\""
+						)
+					);
+				else
+				{
+					location = VariableDeclaration::Location::TransientStorage;
+					mutability = VariableDeclaration::Mutability::Transient;
+				}
+			}
 			else if (token == Token::Constant || token == Token::Immutable)
 			{
 				if (mutability != VariableDeclaration::Mutability::Mutable)
 					parserError(
 						3109_error,
 						std::string("Mutability already set to ") +
-						(mutability == VariableDeclaration::Mutability::Constant ? "\"constant\"" : "\"immutable\"")
+						(
+							mutability == VariableDeclaration::Mutability::Constant ? "\"constant\"" :
+							mutability == VariableDeclaration::Mutability::Immutable ? "\"immutable\"" :
+							"\"transient\""
+						)
 					);
 				else if (token == Token::Constant)
 					mutability = VariableDeclaration::Mutability::Constant;
@@ -874,6 +899,9 @@ ASTPointer<VariableDeclaration> Parser::parseVariableDeclaration(
 					{
 					case Token::Storage:
 						location = VariableDeclaration::Location::Storage;
+						break;
+					case Token::Transient:
+						location = VariableDeclaration::Location::TransientStorage;
 						break;
 					case Token::Memory:
 						location = VariableDeclaration::Location::Memory;

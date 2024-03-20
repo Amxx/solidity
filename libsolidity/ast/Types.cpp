@@ -320,7 +320,7 @@ Type const* Type::fullEncodingType(bool _inLibraryCall, bool _encoderV2, bool) c
 	// Structs are fine in the following circumstances:
 	// - ABIv2 or,
 	// - storage struct for a library
-	if (_inLibraryCall && encodingType && encodingType->dataStoredIn(DataLocation::Storage))
+	if (_inLibraryCall && encodingType && (encodingType->dataStoredIn(DataLocation::Storage) || encodingType->dataStoredIn(DataLocation::TransientStorage)))
 		return encodingType;
 	Type const* baseType = encodingType;
 	while (auto const* arrayType = dynamic_cast<ArrayType const*>(baseType))
@@ -1293,7 +1293,10 @@ BoolResult StringLiteralType::isImplicitlyConvertibleTo(Type const& _convertTo) 
 		return
 			arrayType->location() != DataLocation::CallData &&
 			arrayType->isByteArrayOrString() &&
-			!(arrayType->dataStoredIn(DataLocation::Storage) && arrayType->isPointer());
+			(!arrayType->isPointer() || (
+				!arrayType->dataStoredIn(DataLocation::Storage) &&
+				!arrayType->dataStoredIn(DataLocation::TransientStorage)
+			));
 	}
 	else
 		return false;
@@ -1543,17 +1546,24 @@ TypeResult ReferenceType::unaryOperatorResult(Token _operator) const
 	case DataLocation::Memory:
 		return TypeProvider::emptyTuple();
 	case DataLocation::Storage:
+	case DataLocation::TransientStorage:
 		return isPointer() ? nullptr : TypeProvider::emptyTuple();
 	}
-	return nullptr;
+	solAssert(false, "");
 }
 
 bool ReferenceType::isPointer() const
 {
-	if (m_location == DataLocation::Storage)
-		return m_isPointer;
-	else
+	switch (location())
+	{
+	case DataLocation::CallData:
+	case DataLocation::Memory:
 		return true;
+	case DataLocation::Storage:
+	case DataLocation::TransientStorage:
+		return m_isPointer;
+	}
+	solAssert(false, "");
 }
 
 Type const* ReferenceType::copyForLocationIfReference(Type const* _type) const
@@ -1565,15 +1575,16 @@ std::string ReferenceType::stringForReferencePart() const
 {
 	switch (m_location)
 	{
-	case DataLocation::Storage:
-		return std::string("storage ") + (isPointer() ? "pointer" : "ref");
 	case DataLocation::CallData:
 		return "calldata";
 	case DataLocation::Memory:
 		return "memory";
+	case DataLocation::Storage:
+		return std::string("storage ") + (isPointer() ? "pointer" : "ref");
+	case DataLocation::TransientStorage:
+		return std::string("transient ") + (isPointer() ? "pointer" : "ref");
 	}
 	solAssert(false, "");
-	return "";
 }
 
 std::string ReferenceType::identifierLocationSuffix() const
@@ -1581,14 +1592,17 @@ std::string ReferenceType::identifierLocationSuffix() const
 	std::string id;
 	switch (location())
 	{
-	case DataLocation::Storage:
-		id += "_storage";
+	case DataLocation::CallData:
+		id += "_calldata";
 		break;
 	case DataLocation::Memory:
 		id += "_memory";
 		break;
-	case DataLocation::CallData:
-		id += "_calldata";
+	case DataLocation::Storage:
+		id += "_storage";
+		break;
+	case DataLocation::TransientStorage:
+		id += "_transient";
 		break;
 	}
 	if (isPointer())
@@ -1621,9 +1635,11 @@ BoolResult ArrayType::isImplicitlyConvertibleTo(Type const& _convertTo) const
 	// memory/calldata to storage can be converted, but only to a direct storage reference
 	if (convertTo.location() == DataLocation::Storage && location() != DataLocation::Storage && convertTo.isPointer())
 		return false;
+	if (convertTo.location() == DataLocation::TransientStorage && location() != DataLocation::TransientStorage && convertTo.isPointer())
+		return false;
 	if (convertTo.location() == DataLocation::CallData && location() != convertTo.location())
 		return false;
-	if (convertTo.location() == DataLocation::Storage && !convertTo.isPointer())
+	if ((convertTo.location() == DataLocation::Storage || convertTo.location() == DataLocation::TransientStorage) && !convertTo.isPointer())
 	{
 		// Less restrictive conversion, since we need to copy anyway.
 		if (!baseType()->isImplicitlyConvertibleTo(*convertTo.baseType()))
@@ -1745,6 +1761,7 @@ BoolResult ArrayType::validForLocation(DataLocation _loc) const
 			break;
 		}
 		case DataLocation::Storage:
+		case DataLocation::TransientStorage:
 			if (storageSizeUpperBound() >= bigint(1) << 256)
 				return BoolResult::err("Type too large for storage.");
 			break;
@@ -1826,6 +1843,7 @@ std::vector<std::tuple<std::string, Type const*>> ArrayType::makeStackItems() co
 		case DataLocation::Memory:
 			return {std::make_tuple("mpos", TypeProvider::uint256())};
 		case DataLocation::Storage:
+		case DataLocation::TransientStorage:
 			// byte offset inside storage value is omitted
 			return {std::make_tuple("slot", TypeProvider::uint256())};
 	}
@@ -1907,7 +1925,7 @@ MemberList::MemberMap ArrayType::nativeMembers(ASTNode const*) const
 	if (!isString())
 	{
 		members.emplace_back("length", TypeProvider::uint256());
-		if (isDynamicallySized() && location() == DataLocation::Storage)
+		if (isDynamicallySized() && (location() == DataLocation::Storage || location() == DataLocation::TransientStorage))
 		{
 			Type const* thisAsPointer = TypeProvider::withLocation(this, location(), true);
 			members.emplace_back("push", TypeProvider::function(
@@ -1938,18 +1956,30 @@ MemberList::MemberMap ArrayType::nativeMembers(ASTNode const*) const
 
 Type const* ArrayType::encodingType() const
 {
-	if (location() == DataLocation::Storage)
-		return TypeProvider::uint256();
-	else
+	switch (location())
+	{
+	case DataLocation::CallData:
+	case DataLocation::Memory:
 		return TypeProvider::withLocation(this, DataLocation::Memory, true);
+	case DataLocation::Storage:
+	case DataLocation::TransientStorage:
+		return TypeProvider::uint256();
+	}
+	solAssert(false, "");
 }
 
 Type const* ArrayType::decodingType() const
 {
-	if (location() == DataLocation::Storage)
-		return TypeProvider::uint256();
-	else
+	switch (location())
+	{
+	case DataLocation::CallData:
+	case DataLocation::Memory:
 		return this;
+	case DataLocation::Storage:
+	case DataLocation::TransientStorage:
+		return TypeProvider::uint256();
+	}
+	solAssert(false, "");
 }
 
 TypeResult ArrayType::interfaceType(bool _inLibrary) const
@@ -1968,7 +1998,7 @@ TypeResult ArrayType::interfaceType(bool _inLibrary) const
 		solAssert(!baseInterfaceType.message().empty(), "Expected detailed error message!");
 		result = baseInterfaceType;
 	}
-	else if (_inLibrary && location() == DataLocation::Storage)
+	else if (_inLibrary && (location() == DataLocation::Storage || location() == DataLocation::TransientStorage))
 		result = this;
 	else if (m_arrayKind != ArrayKind::Ordinary)
 		result = TypeProvider::withLocation(this, DataLocation::Memory, true);
@@ -2012,7 +2042,7 @@ u256 ArrayType::memoryDataSize() const
 std::unique_ptr<ReferenceType> ArrayType::copyForLocation(DataLocation _location, bool _isPointer) const
 {
 	auto copy = std::make_unique<ArrayType>(_location);
-	if (_location == DataLocation::Storage)
+	if (_location == DataLocation::Storage || _location == DataLocation::TransientStorage)
 		copy->m_isPointer = _isPointer;
 	copy->m_arrayKind = m_arrayKind;
 	copy->m_baseType = copy->copyForLocationIfReference(m_baseType);
@@ -2174,10 +2204,16 @@ void StructType::clearCache() const
 
 Type const* StructType::encodingType() const
 {
-	if (location() != DataLocation::Storage)
+	switch (location())
+	{
+	case DataLocation::CallData:
+	case DataLocation::Memory:
+		return TypeProvider::uint256();
+	case DataLocation::Storage:
+	case DataLocation::TransientStorage:
 		return this;
-
-	return TypeProvider::uint256();
+	}
+	solAssert(false, "");
 }
 
 BoolResult StructType::isImplicitlyConvertibleTo(Type const& _convertTo) const
@@ -2187,6 +2223,8 @@ BoolResult StructType::isImplicitlyConvertibleTo(Type const& _convertTo) const
 	auto& convertTo = dynamic_cast<StructType const&>(_convertTo);
 	// memory/calldata to storage can be converted, but only to a direct storage reference
 	if (convertTo.location() == DataLocation::Storage && location() != DataLocation::Storage && convertTo.isPointer())
+		return false;
+	if (convertTo.location() == DataLocation::TransientStorage && location() != DataLocation::TransientStorage && convertTo.isPointer())
 		return false;
 	if (convertTo.location() == DataLocation::CallData && location() != convertTo.location())
 		return false;
@@ -2337,7 +2375,7 @@ MemberList::MemberMap StructType::nativeMembers(ASTNode const*) const
 	{
 		Type const* type = variable->annotation().type;
 		solAssert(type, "");
-		solAssert(!(location() != DataLocation::Storage && type->containsNestedMapping()), "");
+		solAssert(location() == DataLocation::Storage || location() == DataLocation::TransientStorage || !type->containsNestedMapping(), "");
 		members.emplace_back(
 			variable.get(),
 			copyForLocationIfReference(type)
@@ -2385,7 +2423,7 @@ TypeResult StructType::interfaceType(bool _inLibrary) const
 
 	TypeResult result{nullptr};
 
-	if (recursive() && !(_inLibrary && location() == DataLocation::Storage))
+	if (recursive() && !(_inLibrary && (location() == DataLocation::Storage || location() == DataLocation::TransientStorage)))
 		return TypeResult::err(
 			"Recursive structs can only be passed as storage pointers to libraries, "
 			"not as memory objects to contract functions."
@@ -2442,7 +2480,7 @@ TypeResult StructType::interfaceType(bool _inLibrary) const
 	if (!result.message().empty())
 		return result;
 
-	if (location() == DataLocation::Storage)
+	if (location() == DataLocation::Storage || location() == DataLocation::TransientStorage)
 		m_interfaceType_library = this;
 	else
 		m_interfaceType_library = TypeProvider::withLocation(this, DataLocation::Memory, true);
@@ -2465,7 +2503,7 @@ BoolResult StructType::validForLocation(DataLocation _loc) const
 		}
 
 	if (
-		_loc == DataLocation::Storage &&
+		(_loc == DataLocation::Storage || _loc == DataLocation::TransientStorage) &&
 		storageSizeUpperBound() >= bigint(1) << 256
 	)
 		return BoolResult::err("Type too large for storage.");
@@ -2482,7 +2520,7 @@ bool StructType::recursive() const
 std::unique_ptr<ReferenceType> StructType::copyForLocation(DataLocation _location, bool _isPointer) const
 {
 	auto copy = std::make_unique<StructType>(m_struct, _location);
-	if (_location == DataLocation::Storage)
+	if (_location == DataLocation::Storage || _location == DataLocation::TransientStorage)
 		copy->m_isPointer = _isPointer;
 	return copy;
 }
@@ -2567,6 +2605,7 @@ std::vector<std::tuple<std::string, Type const*>> StructType::makeStackItems() c
 		case DataLocation::Memory:
 			return {std::make_tuple("mpos", TypeProvider::uint256())};
 		case DataLocation::Storage:
+		case DataLocation::TransientStorage:
 			return {std::make_tuple("slot", TypeProvider::uint256())};
 	}
 	solAssert(false, "");
@@ -3630,6 +3669,8 @@ std::string FunctionType::externalSignature() const
 
 		if (inLibrary && _t->dataStoredIn(DataLocation::Storage))
 			typeName += " storage";
+		if (inLibrary && _t->dataStoredIn(DataLocation::TransientStorage))
+			typeName += " transient";
 		return typeName;
 	});
 	return m_declaration->name() + "(" + boost::algorithm::join(typeStrings, ",") + ")";

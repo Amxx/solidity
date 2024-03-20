@@ -88,7 +88,7 @@ public:
 
 	/// @returns the name of a function that stores a string literal at a specific location in storage
 	/// signature: (slot) ->
-	std::string copyLiteralToStorageFunction(std::string const& _literal);
+	std::string copyLiteralToStorageFunction(std::string const& _literal, Type const& _toType);
 
 	// @returns the name of a function that has the equivalent logic of an
 	// `assert` or `require` call.
@@ -561,7 +561,7 @@ private:
 	/// @returns the name of a function that will clear given storage slot
 	/// starting with given offset until the end of the slot
 	/// signature: (slot, offset)
-	std::string partialClearStorageSlotFunction();
+	std::string partialClearStorageSlotFunction(Type const& _type);
 
 	/// @returns the name of a function that will clear the given storage struct
 	/// signature: (slot) ->
