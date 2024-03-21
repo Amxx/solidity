@@ -1190,7 +1190,6 @@ void CompilerUtils::convertType(
 						std::pair<u256, unsigned> const& offsets = typeOnStack->storageOffsetsOfMember(member.name);
 						_context << offsets.first << Instruction::DUP3 << Instruction::ADD;
 						_context << u256(offsets.second);
-						std::cout << __FILE__ << "@" << __LINE__ << std::endl;
 						StorageItem(_context, *member.type, typeOnStack->location() == DataLocation::TransientStorage).retrieveValue(SourceLocation(), true);
 						Type const* targetMemberType = targetType->memberType(member.name);
 						solAssert(!!targetMemberType, "Member not found in target type.");

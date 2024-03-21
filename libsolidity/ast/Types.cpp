@@ -320,7 +320,7 @@ Type const* Type::fullEncodingType(bool _inLibraryCall, bool _encoderV2, bool) c
 	// Structs are fine in the following circumstances:
 	// - ABIv2 or,
 	// - storage struct for a library
-	if (_inLibraryCall && encodingType && (encodingType->dataStoredIn(DataLocation::Storage) || encodingType->dataStoredIn(DataLocation::TransientStorage)))
+	if (_inLibraryCall && encodingType && (encodingType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage })))
 		return encodingType;
 	Type const* baseType = encodingType;
 	while (auto const* arrayType = dynamic_cast<ArrayType const*>(baseType))
@@ -1293,10 +1293,7 @@ BoolResult StringLiteralType::isImplicitlyConvertibleTo(Type const& _convertTo) 
 		return
 			arrayType->location() != DataLocation::CallData &&
 			arrayType->isByteArrayOrString() &&
-			(!arrayType->isPointer() || (
-				!arrayType->dataStoredIn(DataLocation::Storage) &&
-				!arrayType->dataStoredIn(DataLocation::TransientStorage)
-			));
+			!(arrayType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }) && arrayType->isPointer());
 	}
 	else
 		return false;
@@ -1633,13 +1630,13 @@ BoolResult ArrayType::isImplicitlyConvertibleTo(Type const& _convertTo) const
 	if (convertTo.isByteArray() != isByteArray() || convertTo.isString() != isString())
 		return false;
 	// memory/calldata to storage can be converted, but only to a direct storage reference
-	if (convertTo.location() == DataLocation::Storage && location() != DataLocation::Storage && convertTo.isPointer())
+	if (convertTo.dataStoredIn(DataLocation::Storage) && location() != convertTo.location() && convertTo.isPointer())
 		return false;
-	if (convertTo.location() == DataLocation::TransientStorage && location() != DataLocation::TransientStorage && convertTo.isPointer())
+	if (convertTo.dataStoredIn(DataLocation::TransientStorage) && location() != convertTo.location() && convertTo.isPointer())
 		return false;
-	if (convertTo.location() == DataLocation::CallData && location() != convertTo.location())
+	if (convertTo.dataStoredIn(DataLocation::CallData) && location() != convertTo.location())
 		return false;
-	if ((convertTo.location() == DataLocation::Storage || convertTo.location() == DataLocation::TransientStorage) && !convertTo.isPointer())
+	if ((convertTo.dataStoredIn(DataLocation::Storage) || convertTo.location() == DataLocation::TransientStorage) && !convertTo.isPointer())
 	{
 		// Less restrictive conversion, since we need to copy anyway.
 		if (!baseType()->isImplicitlyConvertibleTo(*convertTo.baseType()))
@@ -2208,10 +2205,10 @@ Type const* StructType::encodingType() const
 	{
 	case DataLocation::CallData:
 	case DataLocation::Memory:
-		return TypeProvider::uint256();
+		return this;
 	case DataLocation::Storage:
 	case DataLocation::TransientStorage:
-		return this;
+		return TypeProvider::uint256();
 	}
 	solAssert(false, "");
 }

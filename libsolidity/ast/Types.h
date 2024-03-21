@@ -1031,7 +1031,7 @@ private:
 class StructType: public ReferenceType
 {
 public:
-	explicit StructType(StructDefinition const& _struct, DataLocation _location = DataLocation::Storage):
+	explicit StructType(StructDefinition const& _struct, DataLocation _location = DataLocation::Storage): // [Amxx] TODO: Transient?
 		ReferenceType(_location), m_struct(_struct) {}
 
 	Category category() const override { return Category::Struct; }

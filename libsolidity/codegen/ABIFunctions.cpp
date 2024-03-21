@@ -24,6 +24,7 @@
 #include <libsolidity/codegen/ABIFunctions.h>
 
 #include <libsolidity/codegen/CompilerUtils.h>
+#include <libsolidity/codegen/InstructionsUtils.h>
 #include <libsolutil/CommonData.h>
 #include <libsolutil/Whiskers.h>
 #include <libsolutil/StringUtils.h>
@@ -324,6 +325,7 @@ std::string ABIFunctions::abiEncodingFunction(
 				else
 					return abiEncodingFunctionSimpleArray(*fromArray, *toArray, _options);
 			case DataLocation::Storage:
+			case DataLocation::TransientStorage:
 				if (fromArray->baseType()->storageBytes() <= 16)
 					return abiEncodingFunctionCompactStorageArray(*fromArray, *toArray, _options);
 				else
@@ -364,7 +366,7 @@ std::string ABIFunctions::abiEncodingFunction(
 		)");
 		templ("functionName", functionName);
 
-		if (_from.dataStoredIn(DataLocation::Storage))
+		if (_from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
 		{
 			// special case: convert storage reference type to value type - this is only
 			// possible for library calls where we just forward the storage reference
@@ -537,7 +539,7 @@ std::string ABIFunctions::abiEncodingFunctionSimpleArray(
 	solAssert(_from.isDynamicallySized() == _to.isDynamicallySized(), "");
 	solAssert(_from.length() == _to.length(), "");
 	solAssert(!_from.isByteArrayOrString(), "");
-	if (_from.dataStoredIn(DataLocation::Storage))
+	if (_from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
 		solAssert(_from.baseType()->storageBytes() > 16, "");
 
 	return createFunction(functionName, [&]() {
@@ -611,17 +613,18 @@ std::string ABIFunctions::abiEncodingFunctionSimpleArray(
 		templ("encodeToMemoryFun", abiEncodeAndReturnUpdatedPosFunction(*_from.baseType(), *_to.baseType(), subOptions));
 		switch (_from.location())
 		{
+			case DataLocation::CallData:
+				templ("arrayElementAccess", calldataAccessFunction(*_from.baseType()) + "(baseRef, srcPtr)");
+				break;
 			case DataLocation::Memory:
 				templ("arrayElementAccess", "mload(srcPtr)");
 				break;
 			case DataLocation::Storage:
+			case DataLocation::TransientStorage:
 				if (_from.baseType()->isValueType())
 					templ("arrayElementAccess", m_utils.readFromStorage(*_from.baseType(), 0, false) + "(srcPtr)");
 				else
 					templ("arrayElementAccess", "srcPtr");
-				break;
-			case DataLocation::CallData:
-				templ("arrayElementAccess", calldataAccessFunction(*_from.baseType()) + "(baseRef, srcPtr)");
 				break;
 			default:
 				solAssert(false, "");
@@ -683,7 +686,7 @@ std::string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 
 	solAssert(_from.isDynamicallySized() == _to.isDynamicallySized(), "");
 	solAssert(_from.length() == _to.length(), "");
-	solAssert(_from.dataStoredIn(DataLocation::Storage), "");
+	solAssert(_from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }), "");
 
 	return createFunction(functionName, [&]() {
 		if (_from.isByteArrayOrString())
@@ -692,7 +695,7 @@ std::string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 			Whiskers templ(R"(
 				// <readableTypeNameFrom> -> <readableTypeNameTo>
 				function <functionName>(value, pos) -> ret {
-					let slotValue := sload(value)
+					let slotValue := <load>(value)
 					let length := <byteArrayLengthFunction>(slotValue)
 					pos := <storeLength>(pos, length)
 					switch and(slotValue, 1)
@@ -706,7 +709,7 @@ std::string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 						let dataPos := <arrayDataSlot>(value)
 						let i := 0
 						for { } lt(i, length) { i := add(i, 0x20) } {
-							mstore(add(pos, i), sload(dataPos))
+							mstore(add(pos, i), <load>(dataPos))
 							dataPos := add(dataPos, 1)
 						}
 						ret := add(pos, <lengthPaddedLong>)
@@ -721,6 +724,7 @@ std::string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 			templ("lengthPaddedShort", _options.padded ? "0x20" : "length");
 			templ("lengthPaddedLong", _options.padded ? "i" : "length");
 			templ("arrayDataSlot", m_utils.arrayDataAreaFunction(_from));
+			templ("load", LoadCode(_from));
 			return templ.render();
 		}
 		else
@@ -750,7 +754,7 @@ std::string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 							for { } lt(add(itemCounter, sub(<itemsPerSlot>, 1)), length)
 										{ itemCounter := add(itemCounter, <itemsPerSlot>) }
 							{
-								let data := sload(srcPtr)
+								let data := <load>(srcPtr)
 								<#items>
 									<encodeToMemoryFun>(<extractFromSlot>(data), pos)
 									pos := add(pos, <stride>)
@@ -760,7 +764,7 @@ std::string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 						}
 						// Handle the last (not necessarily full) slot specially
 						if <useSpill> {
-							let data := sload(srcPtr)
+							let data := <load>(srcPtr)
 							<#items>
 								if <inRange> {
 									<encodeToMemoryFun>(<extractFromSlot>(data), pos)
@@ -781,6 +785,7 @@ std::string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 			templ("lengthFun", m_utils.arrayLengthFunction(_from));
 			templ("storeLength", arrayStoreLengthForEncodingFunction(_to, _options));
 			templ("dataArea", m_utils.arrayDataAreaFunction(_from));
+			templ("load", LoadCode(_from));
 			// We skip the loop for arrays that fit a single slot.
 			if (_from.isDynamicallySized() || _from.length() >= itemsPerSlot)
 				templ("useLoop", "1");
@@ -863,7 +868,7 @@ std::string ABIFunctions::abiEncodingFunctionStruct(
 		else
 			templ("assignEnd", "");
 		// to avoid multiple loads from the same slot for subsequent members
-		templ("init", _from.dataStoredIn(DataLocation::Storage) ? "let slotValue := 0" : "");
+		templ("init", _from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }) ? "let slotValue := 0" : "");
 		u256 previousSlotOffset(-1);
 		u256 encodingOffset = 0;
 		std::vector<std::map<std::string, std::string>> members;
@@ -884,7 +889,20 @@ std::string ABIFunctions::abiEncodingFunctionStruct(
 
 			switch (_from.location())
 			{
+				case DataLocation::CallData:
+				{
+					std::string sourceOffset = toCompactHexWithPrefix(_from.calldataOffsetOfMember(member.name));
+					members.back()["retrieveValue"] = calldataAccessFunction(*memberTypeFrom) + "(value, add(value, " + sourceOffset + "))";
+					break;
+				}
+				case DataLocation::Memory:
+				{
+					std::string sourceOffset = toCompactHexWithPrefix(_from.memoryOffsetOfMember(member.name));
+					members.back()["retrieveValue"] = "mload(add(value, " + sourceOffset + "))";
+					break;
+				}
 				case DataLocation::Storage:
+				case DataLocation::TransientStorage:
 				{
 					solAssert(memberTypeFrom->isValueType() == memberTypeTo->isValueType(), "");
 					u256 storageSlotOffset;
@@ -894,29 +912,19 @@ std::string ABIFunctions::abiEncodingFunctionStruct(
 					{
 						if (storageSlotOffset != previousSlotOffset)
 						{
-							members.back()["preprocess"] = "slotValue := sload(add(value, " + toCompactHexWithPrefix(storageSlotOffset) + "))";
+							members.back()["preprocess"] = _from.dataStoredIn(DataLocation::TransientStorage)
+								? ("slotValue := sload(add(value, " + toCompactHexWithPrefix(storageSlotOffset) + "))")
+								: ("slotValue := tload(add(value, " + toCompactHexWithPrefix(storageSlotOffset) + "))");
 							previousSlotOffset = storageSlotOffset;
 						}
 						members.back()["retrieveValue"] = m_utils.extractFromStorageValue(*memberTypeFrom, intraSlotOffset) + "(slotValue)";
 					}
 					else
 					{
-						solAssert(memberTypeFrom->dataStoredIn(DataLocation::Storage), "");
+						solAssert(memberTypeFrom->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }), "");
 						solAssert(intraSlotOffset == 0, "");
 						members.back()["retrieveValue"] = "add(value, " + toCompactHexWithPrefix(storageSlotOffset) + ")";
 					}
-					break;
-				}
-				case DataLocation::Memory:
-				{
-					std::string sourceOffset = toCompactHexWithPrefix(_from.memoryOffsetOfMember(member.name));
-					members.back()["retrieveValue"] = "mload(add(value, " + sourceOffset + "))";
-					break;
-				}
-				case DataLocation::CallData:
-				{
-					std::string sourceOffset = toCompactHexWithPrefix(_from.calldataOffsetOfMember(member.name));
-					members.back()["retrieveValue"] = calldataAccessFunction(*memberTypeFrom) + "(value, add(value, " + sourceOffset + "))";
 					break;
 				}
 				default:

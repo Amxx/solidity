@@ -3288,12 +3288,12 @@ std::string YulUtilFunctions::conversionFunction(Type const& _from, Type const& 
 		solAssert(_from == _to || _to == dynamic_cast<UserDefinedValueType const&>(_from).underlyingType(), "");
 		return conversionFunction(dynamic_cast<UserDefinedValueType const&>(_from).underlyingType(), _to);
 	}
-	if (_to.category() == Type::Category::UserDefinedValueType)
+	else if (_to.category() == Type::Category::UserDefinedValueType)
 	{
 		solAssert(_from == _to || _from.isImplicitlyConvertibleTo(dynamic_cast<UserDefinedValueType const&>(_to).underlyingType()), "");
 		return conversionFunction(_from, dynamic_cast<UserDefinedValueType const&>(_to).underlyingType());
 	}
-	if (_from.category() == Type::Category::Function)
+	else if (_from.category() == Type::Category::Function)
 	{
 		solAssert(_to.category() == Type::Category::Function, "");
 		FunctionType const& fromType = dynamic_cast<FunctionType const&>(_from);
