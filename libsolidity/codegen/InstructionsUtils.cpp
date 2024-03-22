@@ -29,6 +29,16 @@ using namespace solidity::frontend;
 using namespace solidity::evmasm;
 using namespace std::string_literals;
 
+std::string solidity::frontend::LoadCode(bool _transient)
+{
+	return _transient ? "tload" : "sload";
+}
+
+std::string solidity::frontend::StoreCode(bool _transient)
+{
+	return _transient ? "tstore" : "sstore";
+}
+
 std::string solidity::frontend::LoadCode(Type const& _type)
 {
 	if (_type.dataStoredIn(DataLocation::Storage))

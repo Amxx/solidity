@@ -43,6 +43,7 @@ struct IRLValue
 	struct Storage
 	{
 		std::string const slot;
+		bool const transient;
 		/// unsigned: Used when the offset is known at compile time, uses optimized
 		///           functions
 		/// string: Used when the offset is determined at run time

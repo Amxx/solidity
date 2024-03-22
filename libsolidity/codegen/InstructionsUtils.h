@@ -31,6 +31,8 @@ namespace solidity::frontend
 class Type;
 
 // [Amxx] TODO
+std::string LoadCode(bool _transient);
+std::string StoreCode(bool _transient);
 std::string LoadCode(Type const& _type);
 std::string StoreCode(Type const& _type);
 solidity::evmasm::Instruction LoadInstr(bool _transient);

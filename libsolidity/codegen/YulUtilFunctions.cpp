@@ -1340,7 +1340,7 @@ std::string YulUtilFunctions::cleanUpStorageArrayEndFunction(ArrayType const& _t
 		)")
 		("convertToSize", arrayConvertLengthToSize(_type))
 		("dataPosition", arrayDataAreaFunction(_type))
-		("clearStorageRange", clearStorageRangeFunction(*_type.baseType()))
+		("clearStorageRange", clearStorageRangeFunction(_type))
 		("packed", _type.baseType()->storageBytes() <= 16)
 		("itemsPerSlot", std::to_string(32 / _type.baseType()->storageBytes()))
 		("storageBytes", std::to_string(_type.baseType()->storageBytes()))
@@ -1393,7 +1393,7 @@ std::string YulUtilFunctions::cleanUpDynamicByteArrayEndSlotsFunction(ArrayType 
 		)")
 		("dataLocation", arrayDataAreaFunction(_type))
 		("div32Ceil", divide32CeilFunction())
-		("clearStorageRange", clearStorageRangeFunction(*_type.baseType()))
+		("clearStorageRange", clearStorageRangeFunction(_type))
 		.render();
 	});
 }
@@ -1433,7 +1433,7 @@ std::string YulUtilFunctions::decreaseByteArraySizeFunction(ArrayType const& _ty
 			("functionName", functionName)
 			("dataPosition", arrayDataAreaFunction(_type))
 			("partialClearStorageSlot", partialClearStorageSlotFunction(_type))
-			("clearStorageRange", clearStorageRangeFunction(*_type.baseType()))
+			("clearStorageRange", clearStorageRangeFunction(_type))
 			("transitLongToShort", byteArrayTransitLongToShortFunction(_type))
 			("div32Ceil", divide32CeilFunction())
 			("encodeUsedSetLen", shortByteArrayEncodeUsedAreaSetLengthFunction())
@@ -1560,7 +1560,7 @@ std::string YulUtilFunctions::storageArrayPopFunction(ArrayType const& _type)
 			("indexAccess", storageArrayIndexAccessFunction(_type))
 			(
 				"setToZero",
-				_type.baseType()->category() != Type::Category::Mapping ? storageSetToZeroFunction(*_type.baseType()) : ""
+				_type.baseType()->category() != Type::Category::Mapping ? storageSetToZeroFunction(_type) : ""
 			)
 			("store", StoreCode(_type))
 			.render();
@@ -1606,7 +1606,7 @@ std::string YulUtilFunctions::storageByteArrayPopFunction(ArrayType const& _type
 			("transitLongToShort", byteArrayTransitLongToShortFunction(_type))
 			("encodeUsedSetLen", shortByteArrayEncodeUsedAreaSetLengthFunction())
 			("indexAccessNoChecks", longByteArrayStorageIndexAccessNoCheckFunction())
-			("setToZero", storageSetToZeroFunction(*_type.baseType()))
+			("setToZero", storageSetToZeroFunction(_type))
 			("load", LoadCode(_type))
 			("store", StoreCode(_type))
 			.render();
@@ -1677,7 +1677,7 @@ std::string YulUtilFunctions::storageArrayPushFunction(ArrayType const& _type, T
 			("dataAreaFunction", arrayDataAreaFunction(_type))
 			("isByteArrayOrString", _type.isByteArrayOrString())
 			("indexAccess", storageArrayIndexAccessFunction(_type))
-			("storeValue", updateStorageValueFunction(*_fromType, *_type.baseType()))
+			("storeValue", updateStorageValueFunction(*_fromType, _type))
 			("maxArrayLength", (u256(1) << 64).str())
 			("shl", shiftLeftFunctionDynamic())
 			("load", LoadCode(_type))
@@ -1740,12 +1740,14 @@ std::string YulUtilFunctions::partialClearStorageSlotFunction(Type const& _type)
 	});
 }
 
-std::string YulUtilFunctions::clearStorageRangeFunction(Type const& _type)
+std::string YulUtilFunctions::clearStorageRangeFunction(ArrayType const& _type)
 {
-	if (_type.storageBytes() < 32)
-		solAssert(_type.isValueType(), "");
+	Type const& baseType = *_type.baseType();
 
-	std::string functionName = "clear_storage_range_" + _type.identifier();
+	if (baseType.storageBytes() < 32)
+		solAssert(baseType.isValueType(), "");
+
+	std::string functionName = "clear_storage_range_" + baseType.identifier();
 
 	return m_functionCollector.createFunction(functionName, [&]() {
 		return Whiskers(R"(
@@ -1757,8 +1759,11 @@ std::string YulUtilFunctions::clearStorageRangeFunction(Type const& _type)
 			}
 		)")
 		("functionName", functionName)
-		("setToZero", storageSetToZeroFunction(_type.storageBytes() < 32 ? *TypeProvider::uint256() : _type))
-		("increment", _type.storageSize().str())
+		("setToZero", baseType.storageBytes() < 32
+			? storageSetToZeroFunction(ArrayType(_type.location(), TypeProvider::uint256()))
+			: storageSetToZeroFunction(_type)
+		)
+		("increment", baseType.storageSize().str())
 		.render();
 	});
 }
@@ -1793,9 +1798,11 @@ std::string YulUtilFunctions::clearStorageArrayFunction(ArrayType const& _type)
 		("resizeArray", _type.isDynamicallySized() ? resizeArrayFunction(_type) : "")
 		(
 			"clearRange",
-			_type.baseType()->category() != Type::Category::Mapping ?
-			clearStorageRangeFunction((_type.baseType()->storageBytes() < 32) ? *TypeProvider::uint256() : *_type.baseType()) :
-			""
+			_type.baseType()->category() == Type::Category::Mapping
+			? ""
+			: (_type.baseType()->storageBytes() < 32)
+			? clearStorageRangeFunction(ArrayType(_type.location(), TypeProvider::uint256()))
+			: clearStorageRangeFunction(_type)
 		)
 		("lenToSize", arrayConvertLengthToSize(_type))
 		("len", _type.length().str())
@@ -1840,7 +1847,7 @@ std::string YulUtilFunctions::clearStorageStructFunction(StructType const& _type
 				memberSetValues.emplace_back().emplace("clearMember", Whiskers(R"(
 						<setZero>(add(slot, <memberSlotDiff>), <memberStorageOffset>)
 					)")
-					("setZero", storageSetToZeroFunction(*member.type))
+					("setZero", storageSetToZeroFunction(ArrayType(_type.location(), member.type)))
 					("memberSlotDiff",  memberSlotDiff.str())
 					("memberStorageOffset", std::to_string(memberStorageOffset))
 					.render()
@@ -1943,7 +1950,7 @@ std::string YulUtilFunctions::copyArrayToStorageFunction(ArrayType const& _fromT
 			0,
 			_fromType.baseType()->stackItems().size()
 		));
-		templ("updateStorageValue", updateStorageValueFunction(*_fromType.baseType(), *_toType.baseType(), 0));
+		templ("updateStorageValue", updateStorageValueFunction(*_fromType.baseType(), _toType, 0));
 		templ("srcStride",
 			fromCalldata ?
 			std::to_string(_fromType.calldataStride()) :
@@ -2816,48 +2823,49 @@ std::string YulUtilFunctions::readFromCalldata(Type const& _type)
 
 std::string YulUtilFunctions::updateStorageValueFunction(
 	Type const& _fromType,
-	Type const& _toType,
+	ArrayType const& _toType,
 	std::optional<unsigned> const& _offset
 )
 {
+	Type const& toBaseType = * _toType.baseType();
+
 	std::string const functionName =
 		"update_storage_value_" +
 		(_offset.has_value() ? ("offset_" + std::to_string(*_offset)) : "") +
 		_fromType.identifier() +
 		"_to_" +
-		_toType.identifier();
+		toBaseType.identifier();
 
 	return m_functionCollector.createFunction(functionName, [&] {
-		if (_toType.isValueType())
+		if (toBaseType.isValueType())
 		{
-			solAssert(_fromType.isImplicitlyConvertibleTo(_toType), "");
-			solAssert(_toType.storageBytes() <= 32, "Invalid storage bytes size.");
-			solAssert(_toType.storageBytes() > 0, "Invalid storage bytes size.");
+			solAssert(_fromType.isImplicitlyConvertibleTo(toBaseType), "");
+			solAssert(toBaseType.storageBytes() <= 32, "Invalid storage bytes size.");
+			solAssert(toBaseType.storageBytes() > 0, "Invalid storage bytes size.");
 
 			return Whiskers(R"(
 				function <functionName>(slot, <offset><fromValues>) {
 					let <toValues> := <convert>(<fromValues>)
 					<dstStore>(slot, <update>(<dstLoad>(slot), <offset><prepare>(<toValues>)))
 				}
-
 			)")
 			("functionName", functionName)
 			("update",
 				_offset.has_value() ?
-					updateByteSliceFunction(_toType.storageBytes(), *_offset) :
-					updateByteSliceFunctionDynamic(_toType.storageBytes())
+					updateByteSliceFunction(toBaseType.storageBytes(), *_offset) :
+					updateByteSliceFunctionDynamic(toBaseType.storageBytes())
 			)
 			("offset", _offset.has_value() ? "" : "offset, ")
-			("convert", conversionFunction(_fromType, _toType))
+			("convert", conversionFunction(_fromType, toBaseType))
 			("fromValues", suffixedVariableNameList("value_", 0, _fromType.sizeOnStack()))
-			("toValues", suffixedVariableNameList("convertedValue_", 0, _toType.sizeOnStack()))
-			("prepare", prepareStoreFunction(_toType))
+			("toValues", suffixedVariableNameList("convertedValue_", 0, toBaseType.sizeOnStack()))
+			("prepare", prepareStoreFunction(toBaseType))
 			("dstLoad", LoadCode(_toType))
-			("dstStore", LoadCode(_toType))
+			("dstStore", StoreCode(_toType))
 			.render();
 		}
 
-		auto const* toReferenceType = dynamic_cast<ReferenceType const*>(&_toType);
+		auto const* toReferenceType = dynamic_cast<ReferenceType const*>(&toBaseType);
 		auto const* fromReferenceType = dynamic_cast<ReferenceType const*>(&_fromType);
 		solAssert(toReferenceType, "");
 
@@ -2877,7 +2885,7 @@ std::string YulUtilFunctions::updateStorageValueFunction(
 			("functionName", functionName)
 			("dynamicOffset", !_offset.has_value())
 			("panic", panicFunction(PanicCode::Generic))
-			("copyToStorage", copyLiteralToStorageFunction(dynamic_cast<StringLiteralType const&>(_fromType).value(), _toType))
+			("copyToStorage", copyLiteralToStorageFunction(dynamic_cast<StringLiteralType const&>(_fromType).value(), toBaseType))
 			.render();
 		}
 
@@ -2905,7 +2913,7 @@ std::string YulUtilFunctions::updateStorageValueFunction(
 		if (_fromType.category() == Type::Category::Array)
 			templ("copyToStorage", copyArrayToStorageFunction(
 				dynamic_cast<ArrayType const&>(_fromType),
-				dynamic_cast<ArrayType const&>(_toType)
+				dynamic_cast<ArrayType const&>(toBaseType)
 			));
 		else if (_fromType.category() == Type::Category::ArraySlice)
 		{
@@ -2915,13 +2923,13 @@ std::string YulUtilFunctions::updateStorageValueFunction(
 			);
 			templ("copyToStorage", copyArrayToStorageFunction(
 				dynamic_cast<ArraySliceType const&>(_fromType).arrayType(),
-				dynamic_cast<ArrayType const&>(_toType)
+				dynamic_cast<ArrayType const&>(toBaseType)
 			));
 		}
 		else
 			templ("copyToStorage", copyStructToStorageFunction(
 				dynamic_cast<StructType const&>(_fromType),
-				dynamic_cast<StructType const&>(_toType)
+				dynamic_cast<StructType const&>(toBaseType)
 			));
 
 		return templ.render();
@@ -3729,7 +3737,7 @@ std::string YulUtilFunctions::copyStructToStorageFunction(StructType const& _fro
 			}
 			t("updateStorageValue", updateStorageValueFunction(
 				memberType,
-				*toStructMembers[i].type,
+				ArrayType(_to.location(), toStructMembers[i].type),
 				std::optional<unsigned>{offset}
 			));
 			memberParams[i]["updateMemberCall"] = t.render();
@@ -4235,12 +4243,14 @@ std::string YulUtilFunctions::zeroValueFunction(Type const& _type, bool _splitFu
 	});
 }
 
-std::string YulUtilFunctions::storageSetToZeroFunction(Type const& _type)
+std::string YulUtilFunctions::storageSetToZeroFunction(ArrayType const& _type)
 {
-	std::string const functionName = "storage_set_to_zero_" + _type.identifier();
+	Type const& baseType = *_type.baseType();
+
+	std::string const functionName = "storage_set_to_zero_" + baseType.identifier();
 
 	return m_functionCollector.createFunction(functionName, [&]() {
-		if (_type.isValueType())
+		if (baseType.isValueType()) {
 			return Whiskers(R"(
 				function <functionName>(slot, offset) {
 					let <values> := <zeroValue>()
@@ -4248,11 +4258,12 @@ std::string YulUtilFunctions::storageSetToZeroFunction(Type const& _type)
 				}
 			)")
 			("functionName", functionName)
-			("store", updateStorageValueFunction(_type, _type))
-			("values", suffixedVariableNameList("zero_", 0, _type.sizeOnStack()))
-			("zeroValue", zeroValueFunction(_type))
+			("store", updateStorageValueFunction(baseType, _type))
+			("values", suffixedVariableNameList("zero_", 0, baseType.sizeOnStack()))
+			("zeroValue", zeroValueFunction(baseType))
 			.render();
-		else if (_type.category() == Type::Category::Array)
+		}
+		else if (baseType.category() == Type::Category::Array)
 			return Whiskers(R"(
 				function <functionName>(slot, offset) {
 					if iszero(eq(offset, 0)) { <panic>() }
@@ -4260,10 +4271,10 @@ std::string YulUtilFunctions::storageSetToZeroFunction(Type const& _type)
 				}
 			)")
 			("functionName", functionName)
-			("clearArray", clearStorageArrayFunction(dynamic_cast<ArrayType const&>(_type)))
+			("clearArray", clearStorageArrayFunction(dynamic_cast<ArrayType const&>(baseType)))
 			("panic", panicFunction(PanicCode::Generic))
 			.render();
-		else if (_type.category() == Type::Category::Struct)
+		else if (baseType.category() == Type::Category::Struct)
 			return Whiskers(R"(
 				function <functionName>(slot, offset) {
 					if iszero(eq(offset, 0)) { <panic>() }
@@ -4271,11 +4282,11 @@ std::string YulUtilFunctions::storageSetToZeroFunction(Type const& _type)
 				}
 			)")
 			("functionName", functionName)
-			("clearStruct", clearStorageStructFunction(dynamic_cast<StructType const&>(_type)))
+			("clearStruct", clearStorageStructFunction(dynamic_cast<StructType const&>(baseType)))
 			("panic", panicFunction(PanicCode::Generic))
 			.render();
 		else
-			solUnimplemented("setToZero for type " + _type.identifier() + " not yet implemented!");
+			solUnimplemented("setToZero for type " + baseType.identifier() + " not yet implemented!");
 	});
 }
 

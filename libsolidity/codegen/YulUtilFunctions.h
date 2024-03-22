@@ -245,7 +245,7 @@ public:
 	/// @returns the name of a function that will clear the storage area given
 	/// by the start and end (exclusive) parameters (slots).
 	/// signature: (start, end)
-	std::string clearStorageRangeFunction(Type const& _type);
+	std::string clearStorageRangeFunction(ArrayType const& _type);
 
 	/// @returns the name of a function that will clear the given storage array
 	/// signature: (slot) ->
@@ -355,7 +355,7 @@ public:
 	/// signature: (slot, [offset,] value)
 	std::string updateStorageValueFunction(
 		Type const& _fromType,
-		Type const& _toType,
+		ArrayType const& _toType,
 		std::optional<unsigned> const& _offset = std::optional<unsigned>()
 	);
 
@@ -476,7 +476,7 @@ public:
 	/// @returns the name of a function that will set the given storage item to
 	/// zero
 	/// signature: (slot, offset) ->
-	std::string storageSetToZeroFunction(Type const& _type);
+	std::string storageSetToZeroFunction(ArrayType const& _type);
 
 	/// If revertStrings is debug, @returns the name of a function that
 	/// stores @param _message in memory position 0 and reverts.

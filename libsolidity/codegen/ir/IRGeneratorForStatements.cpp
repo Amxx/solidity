@@ -277,6 +277,7 @@ void IRGeneratorForStatements::initializeStateVar(VariableDeclaration const& _va
 			IRLValue{*_varDecl.annotation().type, IRLValue::Immutable{&_varDecl}} :
 			IRLValue{*_varDecl.annotation().type, IRLValue::Storage{
 				toCompactHexWithPrefix(m_context.storageLocationOfStateVariable(_varDecl).first),
+				_varDecl.transient(),
 				m_context.storageLocationOfStateVariable(_varDecl).second
 			}},
 			*_varDecl.value()
@@ -716,7 +717,7 @@ bool IRGeneratorForStatements::visit(UnaryOperation const& _unaryOperation)
 			util::GenericVisitor{
 				[&](IRLValue::Storage const& _storage) {
 					appendCode() <<
-						m_utils.storageSetToZeroFunction(m_currentLValue->type) <<
+						m_utils.storageSetToZeroFunction(ArrayType(_storage.transient ? DataLocation::TransientStorage : DataLocation::Storage, &m_currentLValue->type)) <<
 						"(" <<
 						_storage.slot <<
 						", " <<
@@ -1430,6 +1431,7 @@ void IRGeneratorForStatements::endVisit(FunctionCall const& _functionCall)
 				*arrayType->baseType(),
 				IRLValue::Storage{
 					slotName,
+					arrayType->dataStoredIn(DataLocation::TransientStorage),
 					offsetName,
 				}
 			});
@@ -2030,7 +2032,7 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 				("add(" + expression.part("slot").name() + ", " + offsets.first.str() + ")\n");
 			setLValue(_memberAccess, IRLValue{
 				type(_memberAccess),
-				IRLValue::Storage{slot, offsets.second}
+				IRLValue::Storage{slot, structType.dataStoredIn(DataLocation::TransientStorage), offsets.second}
 			});
 			break;
 		}
@@ -2259,6 +2261,7 @@ void IRGeneratorForStatements::endVisit(IndexAccess const& _indexAccess)
 			*_indexAccess.annotation().type,
 			IRLValue::Storage{
 				slot,
+				baseType.dataStoredIn(DataLocation::TransientStorage), // [Amxx] TODO: check
 				0u
 			}
 		});
@@ -2337,7 +2340,7 @@ void IRGeneratorForStatements::endVisit(IndexAccess const& _indexAccess)
 
 				setLValue(_indexAccess, IRLValue{
 					*_indexAccess.annotation().type,
-					IRLValue::Storage{slot, offset}
+					IRLValue::Storage{slot, arrayType.dataStoredIn(DataLocation::TransientStorage), offset}
 				});
 
 				break;
@@ -2536,6 +2539,7 @@ void IRGeneratorForStatements::handleVariableReference(
 			*_variable.annotation().type,
 			IRLValue::Storage{
 				toCompactHexWithPrefix(m_context.storageLocationOfStateVariable(_variable).first),
+				_variable.transient(),
 				m_context.storageLocationOfStateVariable(_variable).second
 			}
 		});
@@ -3046,7 +3050,7 @@ void IRGeneratorForStatements::writeToLValue(IRLValue const& _lvalue, IRVariable
 				}, _storage.offset);
 
 				appendCode() <<
-					m_utils.updateStorageValueFunction(_value.type(), _lvalue.type, offsetStatic) <<
+					m_utils.updateStorageValueFunction(_value.type(), ArrayType(_storage.transient ? DataLocation::TransientStorage : DataLocation::Storage, &_lvalue.type), offsetStatic) <<
 					"(" <<
 					_storage.slot <<
 					offsetArgument <<
