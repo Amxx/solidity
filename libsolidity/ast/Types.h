@@ -71,7 +71,7 @@ inline rational makeRational(bigint const& _numerator, bigint const& _denominato
 		return rational(_numerator, _denominator);
 }
 
-enum class DataLocation { Storage, TransientStorage, CallData, Memory };
+enum class DataLocation { CallData, Memory, Storage, Transient };
 
 
 /**

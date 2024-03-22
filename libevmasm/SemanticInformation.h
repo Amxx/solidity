@@ -48,7 +48,7 @@ struct SemanticInformation
 		Write
 	};
 
-	enum class Location { Storage, Memory, TransientStorage };
+	enum class Location { Storage, Memory, Transient };
 
 	/**
 	 * Represents a read or write operation from or to one of the data locations.

@@ -325,7 +325,7 @@ std::string ABIFunctions::abiEncodingFunction(
 				else
 					return abiEncodingFunctionSimpleArray(*fromArray, *toArray, _options);
 			case DataLocation::Storage:
-			case DataLocation::TransientStorage:
+			case DataLocation::Transient:
 				if (fromArray->baseType()->storageBytes() <= 16)
 					return abiEncodingFunctionCompactStorageArray(*fromArray, *toArray, _options);
 				else
@@ -366,7 +366,7 @@ std::string ABIFunctions::abiEncodingFunction(
 		)");
 		templ("functionName", functionName);
 
-		if (_from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
+		if (_from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }))
 		{
 			// special case: convert storage reference type to value type - this is only
 			// possible for library calls where we just forward the storage reference
@@ -539,7 +539,7 @@ std::string ABIFunctions::abiEncodingFunctionSimpleArray(
 	solAssert(_from.isDynamicallySized() == _to.isDynamicallySized(), "");
 	solAssert(_from.length() == _to.length(), "");
 	solAssert(!_from.isByteArrayOrString(), "");
-	if (_from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
+	if (_from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }))
 		solAssert(_from.baseType()->storageBytes() > 16, "");
 
 	return createFunction(functionName, [&]() {
@@ -620,7 +620,7 @@ std::string ABIFunctions::abiEncodingFunctionSimpleArray(
 				templ("arrayElementAccess", "mload(srcPtr)");
 				break;
 			case DataLocation::Storage:
-			case DataLocation::TransientStorage:
+			case DataLocation::Transient:
 				if (_from.baseType()->isValueType())
 					templ("arrayElementAccess", m_utils.readFromStorage(*_from.baseType(), 0, false) + "(srcPtr)");
 				else
@@ -686,7 +686,7 @@ std::string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 
 	solAssert(_from.isDynamicallySized() == _to.isDynamicallySized(), "");
 	solAssert(_from.length() == _to.length(), "");
-	solAssert(_from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }), "");
+	solAssert(_from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }), "");
 
 	return createFunction(functionName, [&]() {
 		if (_from.isByteArrayOrString())
@@ -868,7 +868,7 @@ std::string ABIFunctions::abiEncodingFunctionStruct(
 		else
 			templ("assignEnd", "");
 		// to avoid multiple loads from the same slot for subsequent members
-		templ("init", _from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }) ? "let slotValue := 0" : "");
+		templ("init", _from.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }) ? "let slotValue := 0" : "");
 		u256 previousSlotOffset(-1);
 		u256 encodingOffset = 0;
 		std::vector<std::map<std::string, std::string>> members;
@@ -902,7 +902,7 @@ std::string ABIFunctions::abiEncodingFunctionStruct(
 					break;
 				}
 				case DataLocation::Storage:
-				case DataLocation::TransientStorage:
+				case DataLocation::Transient:
 				{
 					solAssert(memberTypeFrom->isValueType() == memberTypeTo->isValueType(), "");
 					u256 storageSlotOffset;
@@ -912,7 +912,7 @@ std::string ABIFunctions::abiEncodingFunctionStruct(
 					{
 						if (storageSlotOffset != previousSlotOffset)
 						{
-							members.back()["preprocess"] = _from.dataStoredIn(DataLocation::TransientStorage)
+							members.back()["preprocess"] = _from.dataStoredIn(DataLocation::Transient)
 								? ("slotValue := sload(add(value, " + toCompactHexWithPrefix(storageSlotOffset) + "))")
 								: ("slotValue := tload(add(value, " + toCompactHexWithPrefix(storageSlotOffset) + "))");
 							previousSlotOffset = storageSlotOffset;
@@ -921,7 +921,7 @@ std::string ABIFunctions::abiEncodingFunctionStruct(
 					}
 					else
 					{
-						solAssert(memberTypeFrom->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }), "");
+						solAssert(memberTypeFrom->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }), "");
 						solAssert(intraSlotOffset == 0, "");
 						members.back()["retrieveValue"] = "add(value, " + toCompactHexWithPrefix(storageSlotOffset) + ")";
 					}

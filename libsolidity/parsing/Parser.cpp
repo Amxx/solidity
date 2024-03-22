@@ -868,7 +868,7 @@ ASTPointer<VariableDeclaration> Parser::parseVariableDeclaration(
 					);
 				else
 				{
-					location = VariableDeclaration::Location::TransientStorage;
+					location = VariableDeclaration::Location::Transient;
 					mutability = VariableDeclaration::Mutability::Transient;
 				}
 			}
@@ -901,7 +901,7 @@ ASTPointer<VariableDeclaration> Parser::parseVariableDeclaration(
 						location = VariableDeclaration::Location::Storage;
 						break;
 					case Token::Transient:
-						location = VariableDeclaration::Location::TransientStorage;
+						location = VariableDeclaration::Location::Transient;
 						break;
 					case Token::Memory:
 						location = VariableDeclaration::Location::Memory;

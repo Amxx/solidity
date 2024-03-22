@@ -407,7 +407,7 @@ void DeclarationTypeChecker::endVisit(VariableDeclaration const& _variable)
 			{
 				case Location::Memory: return "\"memory\"";
 				case Location::Storage: return "\"storage\"";
-				case Location::TransientStorage: return "\"transient\"";
+				case Location::Transient: return "\"transient\"";
 				case Location::CallData: return "\"calldata\"";
 				case Location::Unspecified: return "none";
 			}
@@ -462,8 +462,8 @@ void DeclarationTypeChecker::endVisit(VariableDeclaration const& _variable)
 		case Location::Unspecified:
 			typeLoc = (_variable.isConstant() || _variable.immutable()) ? DataLocation::Memory : DataLocation::Storage;
 			break;
-		case Location::TransientStorage:
-			typeLoc = DataLocation::TransientStorage;
+		case Location::Transient:
+			typeLoc = DataLocation::Transient;
 			break;
 		default:
 			solAssert(false, "");
@@ -478,17 +478,17 @@ void DeclarationTypeChecker::endVisit(VariableDeclaration const& _variable)
 	else
 		switch (varLoc)
 		{
+			case Location::CallData:
+				typeLoc = DataLocation::CallData;
+				break;
 			case Location::Memory:
 				typeLoc = DataLocation::Memory;
 				break;
 			case Location::Storage:
 				typeLoc = DataLocation::Storage;
 				break;
-			case Location::TransientStorage:
-				typeLoc = DataLocation::TransientStorage;
-				break;
-			case Location::CallData:
-				typeLoc = DataLocation::CallData;
+			case Location::Transient:
+				typeLoc = DataLocation::Transient;
 				break;
 			case Location::Unspecified:
 				solAssert(!_variable.hasReferenceOrMappingType(), "Data location not properly set.");

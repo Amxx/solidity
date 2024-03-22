@@ -43,7 +43,7 @@ std::string solidity::frontend::LoadCode(Type const& _type)
 {
 	if (_type.dataStoredIn(DataLocation::Storage))
 		return "sload";
-	else if (_type.dataStoredIn(DataLocation::TransientStorage))
+	else if (_type.dataStoredIn(DataLocation::Transient))
 		return "tload";
 	else
 		solAssert(false, "");
@@ -53,7 +53,7 @@ std::string solidity::frontend::StoreCode(Type const& _type)
 {
 	if (_type.dataStoredIn(DataLocation::Storage))
 		return "sstore";
-	else if (_type.dataStoredIn(DataLocation::TransientStorage))
+	else if (_type.dataStoredIn(DataLocation::Transient))
 		return "tstore";
 	else
 		solAssert(false, "");
@@ -71,7 +71,7 @@ Instruction solidity::frontend::StoreInstr(bool _transient)
 
 Instruction solidity::frontend::LoadInstr(Type const& _type)
 {
-	if (_type.dataStoredIn(DataLocation::TransientStorage))
+	if (_type.dataStoredIn(DataLocation::Transient))
 		return Instruction::TLOAD;
 	else if (_type.dataStoredIn(DataLocation::Storage))
 		return Instruction::SLOAD;
@@ -81,7 +81,7 @@ Instruction solidity::frontend::LoadInstr(Type const& _type)
 
 Instruction solidity::frontend::StoreInstr(Type const& _type)
 {
-	if (_type.dataStoredIn(DataLocation::TransientStorage))
+	if (_type.dataStoredIn(DataLocation::Transient))
 		return Instruction::TSTORE;
 	else if (_type.dataStoredIn(DataLocation::Storage))
 		return Instruction::SSTORE;

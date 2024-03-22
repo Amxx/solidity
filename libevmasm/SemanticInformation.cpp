@@ -72,7 +72,7 @@ std::vector<SemanticInformation::Operation> SemanticInformation::readWriteOperat
 		assertThrow(transientStorage(_instruction) != Effect::None, OptimizerException, "");
 		Operation op;
 		op.effect = transientStorage(_instruction);
-		op.location = Location::TransientStorage;
+		op.location = Location::Transient;
 		op.startParameter = 0;
 		op.lengthConstant = 1;
 		return {op};
@@ -151,12 +151,12 @@ std::vector<SemanticInformation::Operation> SemanticInformation::readWriteOperat
 		std::vector<Operation> operations{
 			Operation{Location::Memory, Effect::Read, paramCount - 4, paramCount - 3, {}},
 			Operation{Location::Storage, Effect::Read, {}, {}, {}},
-			Operation{Location::TransientStorage, Effect::Read, {}, {}, {}}
+			Operation{Location::Transient, Effect::Read, {}, {}, {}}
 		};
 		if (_instruction != Instruction::STATICCALL)
 		{
 			operations.emplace_back(Operation{Location::Storage, Effect::Write, {}, {}, {}});
-			operations.emplace_back(Operation{Location::TransientStorage, Effect::Write, {}, {}, {}});
+			operations.emplace_back(Operation{Location::Transient, Effect::Write, {}, {}, {}});
 		}
 		operations.emplace_back(Operation{
 			Location::Memory,
@@ -181,8 +181,8 @@ std::vector<SemanticInformation::Operation> SemanticInformation::readWriteOperat
 			},
 			Operation{Location::Storage, Effect::Read, {}, {}, {}},
 			Operation{Location::Storage, Effect::Write, {}, {}, {}},
-			Operation{Location::TransientStorage, Effect::Read, {}, {}, {}},
-			Operation{Location::TransientStorage, Effect::Write, {}, {}, {}}
+			Operation{Location::Transient, Effect::Read, {}, {}, {}},
+			Operation{Location::Transient, Effect::Write, {}, {}, {}}
 		};
 	case Instruction::MSIZE:
 		// This is just to satisfy the assert below.

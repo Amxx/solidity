@@ -206,7 +206,7 @@ StorageItem::StorageItem(CompilerContext& _compilerContext, VariableDeclaration 
 	// {
 	// 	case VariableDeclaration::Location::Unspecified: std::cout << "VariableDeclaration::Location::Unspecified" << std::endl; break;
 	// 	case VariableDeclaration::Location::Storage: std::cout << "VariableDeclaration::Location::Storage" << std::endl; break;
-	// 	case VariableDeclaration::Location::TransientStorage: std::cout << "VariableDeclaration::Location::TransientStorage" << std::endl; break;
+	// 	case VariableDeclaration::Location::Transient: std::cout << "VariableDeclaration::Location::Transient" << std::endl; break;
 	// 	case VariableDeclaration::Location::Memory: std::cout << "VariableDeclaration::Location::Memory" << std::endl; break;
 	// 	case VariableDeclaration::Location::CallData: std::cout << "VariableDeclaration::Location::CallData" << std::endl; break;
 	// }
@@ -443,7 +443,7 @@ void StorageItem::storeValue(Type const& _sourceType, SourceLocation const& _loc
 				m_context.callYulFunction(
 					m_context.utilFunctions().updateStorageValueFunction(
 						sourceType,
-						ArrayType(m_transient ? DataLocation::TransientStorage : DataLocation::Storage, m_dataType),
+						ArrayType(m_transient ? DataLocation::Transient : DataLocation::Storage, m_dataType),
 						0
 					),
 					2,
@@ -458,14 +458,14 @@ void StorageItem::storeValue(Type const& _sourceType, SourceLocation const& _loc
 					Type const* memberType = member.type;
 					solAssert(memberType->nameable(), "");
 					Type const* sourceMemberType = sourceType.memberType(member.name);
-					if (sourceType.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
+					if (sourceType.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }))
 					{
 						// stack layout: source_ref target_ref
 						std::pair<u256, unsigned> const& offsets = sourceType.storageOffsetsOfMember(member.name);
 						m_context << offsets.first << Instruction::DUP3 << Instruction::ADD;
 						m_context << u256(offsets.second);
 						// stack: source_ref target_ref source_member_ref source_member_off
-						StorageItem(m_context, *sourceMemberType, sourceType.dataStoredIn({ DataLocation::TransientStorage })).retrieveValue(_location, true);
+						StorageItem(m_context, *sourceMemberType, sourceType.dataStoredIn({ DataLocation::Transient })).retrieveValue(_location, true);
 						// stack: source_ref target_ref source_value...
 					}
 					else

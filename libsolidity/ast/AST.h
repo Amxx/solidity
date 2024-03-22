@@ -1053,7 +1053,7 @@ private:
 class VariableDeclaration: public Declaration, public StructurallyDocumented
 {
 public:
-	enum Location { Unspecified, Storage, TransientStorage, Memory, CallData };
+	enum Location { Unspecified, CallData, Memory, Storage, Transient };
 	enum class Mutability { Mutable, Transient, Immutable, Constant };
 	static std::string mutabilityToString(Mutability _mutability)
 	{

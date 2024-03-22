@@ -73,7 +73,7 @@ Type const* closestType(Type const* _type, Type const* _targetType, bool _isShif
 		return TypeProvider::tuple(std::move(tempComponents));
 	}
 	else
-		return _targetType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }) ? _type->mobileType() : _targetType;
+		return _targetType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }) ? _type->mobileType() : _targetType;
 }
 
 }
@@ -92,7 +92,7 @@ void ExpressionCompiler::appendStateVariableInitialization(VariableDeclaration c
 	CompilerContext::LocationSetter locationSetter(m_context, _varDecl);
 	_varDecl.value()->accept(*this);
 
-	if (_varDecl.type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
+	if (_varDecl.type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }))
 	{
 		// reference type, only convert value to mobile type and do final conversion in storeValue.
 		auto mt = type->mobileType();
@@ -1099,7 +1099,7 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 				if (arrayType->isByteArrayOrString())
 					setLValue<StorageByteArrayElement>(_functionCall);
 				else
-					setLValue<StorageItem>(_functionCall, *_functionCall.annotation().type, arrayType->dataStoredIn(DataLocation::TransientStorage)); // [Amxx] TODO: transient?
+					setLValue<StorageItem>(_functionCall, *_functionCall.annotation().type, arrayType->dataStoredIn(DataLocation::Transient)); // [Amxx] TODO: transient?
 			}
 			else
 			{
@@ -1125,7 +1125,7 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 				utils().moveToStackTop(2, argType->sizeOnStack());
 				// stack: storageSlot slotOffset argValue
 				Type const* type =
-					arrayType->baseType()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }) ?
+					arrayType->baseType()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }) ?
 					arguments[0]->annotation().type->mobileType() :
 					arrayType->baseType();
 				solAssert(type, "");
@@ -1134,7 +1134,7 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 				utils().moveToStackTop(1 + type->sizeOnStack());
 				// stack: argValue storageSlot slotOffset
 				if (!arrayType->isByteArrayOrString())
-					StorageItem(m_context, *paramType, arrayType->dataStoredIn(DataLocation::TransientStorage)).storeValue(*type, _functionCall.location(), true);
+					StorageItem(m_context, *paramType, arrayType->dataStoredIn(DataLocation::Transient)).storeValue(*type, _functionCall.location(), true);
 				else
 					StorageByteArrayElement(m_context).storeValue(*type, _functionCall.location(), true);
 			}
@@ -1146,7 +1146,7 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 			solAssert(function.hasBoundFirstArgument(), "");
 			solAssert(function.parameterTypes().empty(), "");
 			ArrayType const* arrayType = dynamic_cast<ArrayType const*>(function.selfType());
-			solAssert(arrayType && arrayType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }), "");
+			solAssert(arrayType && arrayType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }), "");
 			ArrayUtils(m_context).popStorageArrayElement(*arrayType);
 			break;
 		}
@@ -1965,11 +1965,11 @@ bool ExpressionCompiler::visit(MemberAccess const& _memberAccess)
 		switch (type.location())
 		{
 		case DataLocation::Storage:
-		case DataLocation::TransientStorage:
+		case DataLocation::Transient:
 		{
 			std::pair<u256, unsigned> const& offsets = type.storageOffsetsOfMember(member);
 			m_context << offsets.first << Instruction::ADD << u256(offsets.second);
-			setLValue<StorageItem>(_memberAccess, *memberType, type.dataStoredIn(DataLocation::TransientStorage));
+			setLValue<StorageItem>(_memberAccess, *memberType, type.dataStoredIn(DataLocation::Transient));
 			break;
 		}
 		case DataLocation::Memory:
@@ -2042,7 +2042,7 @@ bool ExpressionCompiler::visit(MemberAccess const& _memberAccess)
 					m_context << Instruction::MLOAD;
 					break;
 				case DataLocation::Storage:
-				case DataLocation::TransientStorage:
+				case DataLocation::Transient:
 					ArrayUtils(m_context).retrieveLength(type);
 					m_context << Instruction::SWAP1 << Instruction::POP;
 					break;
@@ -2052,7 +2052,7 @@ bool ExpressionCompiler::visit(MemberAccess const& _memberAccess)
 		{
 			solAssert(
 				type.isDynamicallySized() &&
-				type.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }) &&
+				type.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }) &&
 				type.category() == Type::Category::Array,
 				"Tried to use ." + member + "() on a non-dynamically sized array"
 			);
@@ -2151,7 +2151,7 @@ bool ExpressionCompiler::visit(IndexAccess const& _indexAccess)
 			}
 			m_context << Instruction::KECCAK256;
 			m_context << u256(0);
-			setLValue<StorageItem>(_indexAccess, *_indexAccess.annotation().type, baseType.dataStoredIn(DataLocation::TransientStorage));
+			setLValue<StorageItem>(_indexAccess, *_indexAccess.annotation().type, baseType.dataStoredIn(DataLocation::Transient));
 			break;
 		}
 		case Type::Category::ArraySlice:
@@ -2187,7 +2187,7 @@ bool ExpressionCompiler::visit(IndexAccess const& _indexAccess)
 					setLValue<MemoryItem>(_indexAccess, *_indexAccess.annotation().type, !arrayType.isByteArrayOrString());
 					break;
 				case DataLocation::Storage:
-				case DataLocation::TransientStorage:
+				case DataLocation::Transient:
 					ArrayUtils(m_context).accessIndex(arrayType);
 					if (arrayType.isByteArrayOrString())
 					{
@@ -2195,7 +2195,7 @@ bool ExpressionCompiler::visit(IndexAccess const& _indexAccess)
 						setLValue<StorageByteArrayElement>(_indexAccess);
 					}
 					else
-						setLValue<StorageItem>(_indexAccess, *_indexAccess.annotation().type, baseType.dataStoredIn(DataLocation::TransientStorage));
+						setLValue<StorageItem>(_indexAccess, *_indexAccess.annotation().type, baseType.dataStoredIn(DataLocation::Transient));
 					break;
 			}
 			break;

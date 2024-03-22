@@ -168,7 +168,7 @@ private:
 			else
 				solAssert(false);
 		}
-		else if (varDecl->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
+		else if (varDecl->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }))
 		{
 			solAssert(suffix == "slot" || suffix == "offset");
 			solAssert(varDecl->isLocalVariable());
@@ -303,7 +303,7 @@ void IRGeneratorForStatements::initializeLocalVar(VariableDeclaration const& _va
 		if (dynamic_cast<MappingType const*>(type))
 			return;
 		else if (auto const* refType = dynamic_cast<ReferenceType const*>(type))
-			if (refType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }) && refType->isPointer())
+			if (refType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }) && refType->isPointer())
 				return;
 
 		IRVariable zero = zeroValue(*type);
@@ -717,7 +717,7 @@ bool IRGeneratorForStatements::visit(UnaryOperation const& _unaryOperation)
 			util::GenericVisitor{
 				[&](IRLValue::Storage const& _storage) {
 					appendCode() <<
-						m_utils.storageSetToZeroFunction(ArrayType(_storage.transient ? DataLocation::TransientStorage : DataLocation::Storage, &m_currentLValue->type)) <<
+						m_utils.storageSetToZeroFunction(ArrayType(_storage.transient ? DataLocation::Transient : DataLocation::Storage, &m_currentLValue->type)) <<
 						"(" <<
 						_storage.slot <<
 						", " <<
@@ -1431,7 +1431,7 @@ void IRGeneratorForStatements::endVisit(FunctionCall const& _functionCall)
 				*arrayType->baseType(),
 				IRLValue::Storage{
 					slotName,
-					arrayType->dataStoredIn(DataLocation::TransientStorage),
+					arrayType->dataStoredIn(DataLocation::Transient),
 					offsetName,
 				}
 			});
@@ -2024,7 +2024,7 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 			break;
 		}
 		case DataLocation::Storage:
-		case DataLocation::TransientStorage:
+		case DataLocation::Transient:
 		{
 			std::pair<u256, unsigned> const& offsets = structType.storageOffsetsOfMember(member);
 			std::string slot = m_context.newYulVariable();
@@ -2032,7 +2032,7 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 				("add(" + expression.part("slot").name() + ", " + offsets.first.str() + ")\n");
 			setLValue(_memberAccess, IRLValue{
 				type(_memberAccess),
-				IRLValue::Storage{slot, structType.dataStoredIn(DataLocation::TransientStorage), offsets.second}
+				IRLValue::Storage{slot, structType.dataStoredIn(DataLocation::Transient), offsets.second}
 			});
 			break;
 		}
@@ -2072,7 +2072,7 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 		}
 		else if (member == "pop" || member == "push")
 		{
-			solAssert(type.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }));
+			solAssert(type.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }));
 			define(IRVariable{_memberAccess}.part("slot"), IRVariable{_memberAccess.expression()}.part("slot"));
 		}
 		else
@@ -2261,7 +2261,7 @@ void IRGeneratorForStatements::endVisit(IndexAccess const& _indexAccess)
 			*_indexAccess.annotation().type,
 			IRLValue::Storage{
 				slot,
-				baseType.dataStoredIn(DataLocation::TransientStorage), // [Amxx] TODO: check
+				baseType.dataStoredIn(DataLocation::Transient), // [Amxx] TODO: check
 				0u
 			}
 		});
@@ -2323,7 +2323,7 @@ void IRGeneratorForStatements::endVisit(IndexAccess const& _indexAccess)
 				break;
 			}
 			case DataLocation::Storage:
-			case DataLocation::TransientStorage:
+			case DataLocation::Transient:
 			{
 				std::string slot = m_context.newYulVariable();
 				std::string offset = m_context.newYulVariable();
@@ -2340,7 +2340,7 @@ void IRGeneratorForStatements::endVisit(IndexAccess const& _indexAccess)
 
 				setLValue(_indexAccess, IRLValue{
 					*_indexAccess.annotation().type,
-					IRLValue::Storage{slot, arrayType.dataStoredIn(DataLocation::TransientStorage), offset}
+					IRLValue::Storage{slot, arrayType.dataStoredIn(DataLocation::Transient), offset}
 				});
 
 				break;
@@ -3050,7 +3050,7 @@ void IRGeneratorForStatements::writeToLValue(IRLValue const& _lvalue, IRVariable
 				}, _storage.offset);
 
 				appendCode() <<
-					m_utils.updateStorageValueFunction(_value.type(), ArrayType(_storage.transient ? DataLocation::TransientStorage : DataLocation::Storage, &_lvalue.type), offsetStatic) <<
+					m_utils.updateStorageValueFunction(_value.type(), ArrayType(_storage.transient ? DataLocation::Transient : DataLocation::Storage, &_lvalue.type), offsetStatic) <<
 					"(" <<
 					_storage.slot <<
 					offsetArgument <<

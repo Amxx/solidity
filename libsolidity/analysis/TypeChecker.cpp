@@ -126,10 +126,10 @@ void TypeChecker::checkDoubleStorageAssignment(Assignment const& _assignment)
 		{
 			if (ReferenceType const* ref = dynamic_cast<ReferenceType const*>(componentType))
 			{
-				if (ref && ref->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }) && !ref->isPointer())
+				if (ref && ref->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }) && !ref->isPointer())
 				{
 					toStorageCopies++;
-					if (_rhs.components()[index]->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
+					if (_rhs.components()[index]->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }))
 						storageToStorageCopies++;
 				}
 			}
@@ -143,7 +143,7 @@ void TypeChecker::checkDoubleStorageAssignment(Assignment const& _assignment)
 						if (callType.kind() == FunctionType::Kind::ArrayPush)
 						{
 							ArrayType const& arrayType = dynamic_cast<ArrayType const&>(*callType.selfType());
-							if (arrayType.isByteArray() && arrayType.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
+							if (arrayType.isByteArray() && arrayType.dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }))
 							{
 								++storageByteAccesses;
 								++storageByteArrayPushes;
@@ -153,7 +153,7 @@ void TypeChecker::checkDoubleStorageAssignment(Assignment const& _assignment)
 					else if (IndexAccess const* indexAccess = dynamic_cast<IndexAccess const*>(resolveOuterUnaryTuples(lhsResolved->components().at(index).get())))
 					{
 						if (ArrayType const* arrayType = dynamic_cast<ArrayType const*>(type(indexAccess->baseExpression())))
-							if (arrayType->isByteArray() && arrayType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
+							if (arrayType->isByteArray() && arrayType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }))
 								++storageByteAccesses;
 					}
 				}
@@ -260,7 +260,7 @@ TypePointers TypeChecker::typeCheckABIDecodeAndRetrieveReturnType(FunctionCall c
 			if (actualType->category() == Type::Category::Address)
 				actualType = TypeProvider::payableAddress();
 			solAssert(
-				!actualType->dataStoredInAnyOf({ DataLocation::CallData, DataLocation::Storage, DataLocation::TransientStorage }),
+				!actualType->dataStoredInAnyOf({ DataLocation::CallData, DataLocation::Storage, DataLocation::Transient }),
 				""
 			);
 			if (!actualType->fullEncodingType(false, _abiEncoderV2, false))
@@ -673,7 +673,7 @@ bool TypeChecker::visit(VariableDeclaration const& _variable)
 		BoolResult result = referenceType->validForLocation(referenceType->location());
 		if (result)
 		{
-			bool isLibraryStorageParameter = (_variable.isLibraryFunctionParameter() && referenceType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }));
+			bool isLibraryStorageParameter = (_variable.isLibraryFunctionParameter() && referenceType->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }));
 			// We skip the calldata check for abstract contract constructors.
 			bool isAbstractConstructorParam = _variable.isConstructorParameter() && m_currentContract && m_currentContract->abstract();
 			bool callDataCheckRequired =
@@ -920,7 +920,7 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 			{
 				std::string const& suffix = identifierInfo.suffix;
 				solAssert((std::set<std::string>{"offset", "slot", "length", "selector", "address"}).count(suffix), "");
-				if (!var->isConstant() && (var->isStateVariable() || var->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage })))
+				if (!var->isConstant() && (var->isStateVariable() || var->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient })))
 				{
 					if (suffix != "slot" && suffix != "offset")
 					{
@@ -980,7 +980,7 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 				);
 				return false;
 			}
-			else if (var->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::TransientStorage }))
+			else if (var->type()->dataStoredInAnyOf({ DataLocation::Storage, DataLocation::Transient }))
 			{
 				m_errorReporter.typeError(9068_error, nativeLocationOf(_identifier), "You have to use the \".slot\" or \".offset\" suffix to access storage reference variables.");
 				return false;
@@ -1986,7 +1986,7 @@ Type const* TypeChecker::typeCheckTypeConversionAndRetrieveReturnType(
 			{
 				if (auto resultArrayType = dynamic_cast<ArrayType const*>(resultType))
 					solAssert(
-						!argArrayType->dataStoredInAnyOf({ DataLocation::CallData, DataLocation::Storage, DataLocation::TransientStorage }) ||
+						!argArrayType->dataStoredInAnyOf({ DataLocation::CallData, DataLocation::Storage, DataLocation::Transient }) ||
 						(
 							(
 								resultArrayType->isPointer() ||
